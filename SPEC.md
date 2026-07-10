@@ -1,0 +1,1 @@
+我们需要一个用户注册登录模块。使用 FastAPI，数据库 PostgreSQL。注册需要邮箱和密码，密码要 bcrypt 加密，返回 JWT token。需要编写对应的 Pydantic 模型、数据库迁移脚本、接口单元测试。

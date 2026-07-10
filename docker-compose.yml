@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: test_platform_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: test_platform_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: test_platform_backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.example
+    environment:
+      # Override DATABASE_URL/REDIS_URL to point at the in-compose services
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/test_platform
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source for live reload during development
+      - ./src:/app/src
+
+volumes:
+  pgdata:
