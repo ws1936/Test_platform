@@ -62,6 +62,14 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    # Incremented on password change / "logout everywhere". All existing
+    # JWTs with a stale ``v`` claim are rejected by ``get_current_user``.
+    token_version: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        server_default="0",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

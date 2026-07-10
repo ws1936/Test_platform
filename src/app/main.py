@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import settings, validate_secrets
 from app.infrastructure.database.session import close_db, init_db
 from app.interfaces.http.auth_router import router as auth_router
 from app.interfaces.http.role_router import router as role_router
@@ -19,6 +19,8 @@ from app.interfaces.http.user_router import admin_router, me_router
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan events."""
+    # Refuse to boot with a known-insecure JWT secret (Review C-S1).
+    validate_secrets()
     # Startup
     await init_db()
     yield

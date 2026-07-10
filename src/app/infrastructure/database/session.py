@@ -8,12 +8,26 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
 
+def _build_engine_kwargs() -> dict:
+    """Build engine kwargs that work for both PostgreSQL and SQLite.
+
+    SQLite (used in tests) only supports StaticPool/NullPool and rejects
+    ``pool_size`` / ``max_overflow``, so we omit those for SQLite URLs.
+    """
+    url = settings.DATABASE_URL
+    if url.startswith("sqlite"):
+        return {"echo": settings.DATABASE_ECHO}
+    return {
+        "pool_size": settings.DATABASE_POOL_SIZE,
+        "max_overflow": settings.DATABASE_MAX_OVERFLOW,
+        "echo": settings.DATABASE_ECHO,
+    }
+
+
 # Create async engine
 engine = create_async_engine(
     settings.DATABASE_URL,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    echo=settings.DATABASE_ECHO,
+    **_build_engine_kwargs(),
 )
 
 # Create session factory
