@@ -1,162 +1,177 @@
-# 自动化测试平台 (Auto Test Platform)
+# API 自动化测试平台
 
-一个功能完善的自动化测试平台，支持 API 测试用例的管理、执行和报告生成。
+一个面向测试团队的 API 自动化测试平台，用于统一管理接口测试项目、环境、用例、执行记录和测试报告。
 
-## 📁 项目结构
+> 当前阶段目标：**只做 API 自动化测试平台 MVP**。  
+> 暂不做 UI 自动化、性能测试、AI Agent、RAG、分布式调度等复杂能力。
 
+---
+
+## 1. MVP 核心闭环
+
+```text
+登录
+  ↓
+创建项目
+  ↓
+配置环境
+  ↓
+维护 API 用例
+  ↓
+执行测试
+  ↓
+查看结果 / 报告
 ```
+
+---
+
+## 2. 文档结构
+
+项目文档已按产品、设计、API、规则、测试五类重新整理：
+
+```text
+docs/
+├── 01-product/
+│   ├── PRD.md                  # 产品需求
+│   ├── MVP.md                  # MVP 范围
+│   ├── ROADMAP.md              # 版本规划
+│   └── BACKLOG.md              # 功能待办列表
+│
+├── 02-design/
+│   ├── ARCHITECTURE.md         # 系统架构
+│   ├── DATABASE.md             # ER / 数据模型
+│   ├── MODULE.md               # 模块设计
+│   └── DEPLOYMENT.md           # 部署架构
+│
+├── 03-api/
+│   ├── OPENAPI.yaml            # 接口契约
+│   ├── API_GUIDE.md            # API 说明
+│   └── ERROR_CODE.md           # 错误码规范
+│
+├── 04-rules/
+│   ├── AI_RULES.md             # AI 编码规则（最重要）
+│   ├── DIRECTORY.md            # 项目目录规范
+│   ├── CODING_STYLE.md         # 编码规范
+│   └── ADR.md                  # 架构决策记录
+│
+└── 05-test/
+    ├── TEST_STRATEGY.md        # 测试策略
+    ├── ACCEPTANCE.md           # 验收标准
+    └── DoD.md                  # Definition of Done
+```
+
+建议阅读顺序：
+
+1. `docs/04-rules/AI_RULES.md`
+2. `docs/01-product/PRD.md`
+3. `docs/01-product/MVP.md`
+4. `docs/01-product/BACKLOG.md`
+5. `docs/02-design/ARCHITECTURE.md`
+6. `docs/02-design/MODULE.md`
+7. `docs/03-api/API_GUIDE.md`
+8. `docs/05-test/ACCEPTANCE.md`
+
+---
+
+## 3. 代码结构
+
+```text
 auto-test-platform/
-│
-├── docs/                        # 文档目录
-│   ├── requirements/            # 需求文档
-│   │   ├── 001_project.md       # 项目需求
-│   │   ├── 002_login.md         # 登录模块需求
-│   │   ├── 003_user.md          # 用户管理需求
-│   │   └── 004_api.md           # API测试需求
-│   │
-│   ├── architecture/            # 架构文档
-│   │   ├── system.md            # 系统架构设计
-│   │   ├── er.md                # ER图设计
-│   │   └── api.md               # API设计文档
-│   │
-│   ├── design/                  # 详细设计文档
-│   └── meeting/                 # 会议纪要
-│
-├── src/                         # 后端代码（实际代码位置）
+├── docs/                       # 项目文档
+├── src/                        # 后端代码
 │   ├── app/
-│   │   ├── common/              # 公共模块
-│   │   ├── domain/              # 领域层
-│   │   ├── infrastructure/      # 基础设施层
-│   │   └── interfaces/          # 接口层
-│   ├── migrations/              # 数据库迁移
-│   └── tests/                   # 后端测试
-│
-├── frontend/                    # 前端代码（待开发）
-│   └── src/
-│
-├── tests/                       # 集成测试
-├── scripts/                     # 脚本工具
+│   │   ├── common/             # 公共模块
+│   │   ├── domain/             # 领域模块
+│   │   ├── infrastructure/     # 基础设施
+│   │   └── interfaces/         # HTTP 接口
+│   └── tests/                  # 后端测试
+├── frontend/                   # 前端工程
+├── migrations/                 # Alembic 迁移
+├── scripts/                    # 辅助脚本
 └── README.md
 ```
 
-## 🚀 技术栈
+---
+
+## 4. 技术栈
 
 ### 后端
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| Python | 3.11+ | 编程语言 |
-| FastAPI | 0.115+ | Web框架 |
-| SQLAlchemy | 2.0+ | ORM |
-| Pydantic | 2.9+ | 数据验证 |
-| PostgreSQL | 15+ | 主数据库 |
-| Redis | 7+ | 缓存 |
+
+| 技术 | 用途 |
+|------|------|
+| Python 3.12 | 编程语言 |
+| FastAPI | Web 框架和 OpenAPI 文档 |
+| Pydantic v2 | 请求/响应模型校验 |
+| SQLAlchemy 2.x | ORM |
+| Alembic | 数据库迁移 |
+| PostgreSQL | 主数据库 |
+| httpx | API 测试执行 HTTP 客户端 |
+| pytest | 自动化测试 |
 
 ### 前端
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| React | 18+ | UI框架 |
-| TypeScript | 5+ | 类型安全 |
-| Ant Design | 5+ | UI组件 |
-| React Query | 5+ | 数据请求 |
 
-## 📋 功能模块
+| 技术 | 用途 |
+|------|------|
+| React | 管理页面 |
+| TypeScript | 类型安全 |
+| Vite | 构建工具 |
+| Ant Design | UI 组件 |
+| Zustand | 轻量状态管理 |
+| Axios | 后端接口调用 |
 
-### 已完成
-- [x] 用户认证（注册/登录/Token刷新）
-- [x] 项目结构搭建
-- [x] 数据库设计
+---
 
-### 进行中
-- [ ] 用户管理模块
-- [ ] API测试项目管理
-- [ ] 测试用例管理
-- [ ] 测试执行引擎
-- [ ] 测试报告生成
+## 5. 快速开始
 
-### 待开发
-- [ ] 前端界面
-- [ ] 环境配置管理
-- [ ] 定时任务
-- [ ] 数据导出
+### 5.1 环境要求
 
-## 🛠️ 快速开始
-
-### 环境要求
-- Python 3.11+
+- Python 3.12+
 - Node.js 18+
 - PostgreSQL 15+
-- Redis 7+
+- uv
 
-### 后端启动
+### 5.2 后端启动
 
 ```bash
-# 安装依赖（在项目根目录）
 uv sync
-
-# 配置环境变量
 cp .env.example .env
-# 编辑 .env 文件
-
-# 运行数据库迁移（alembic.ini 位于 src/）
-cd src && alembic upgrade head && cd ..
-
-# 启动服务
-cd src && uvicorn app.main:app --reload
+alembic upgrade head
+uvicorn app.main:app --reload --app-dir src
 ```
 
-### 前端启动
+启动后访问：
+
+- Swagger UI: <http://localhost:8000/docs>
+- ReDoc: <http://localhost:8000/redoc>
+
+### 5.3 前端启动
 
 ```bash
-# 进入前端目录
 cd frontend
-
-# 安装依赖
 npm install
-
-# 启动开发服务器
 npm run dev
 ```
 
-## 📖 API 文档
+---
 
-启动后端服务后，访问：
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-## 🧪 测试
+## 6. 测试
 
 ```bash
-# 运行后端测试（在项目根目录）
 pytest src/tests
-
-# 运行集成测试
-pytest tests
 ```
 
-## 📝 开发规范
+涉及前端时：
 
-### 代码风格
-- 后端：遵循 PEP 8，使用 Black 格式化
-- 前端：遵循 ESLint + Prettier 配置
-
-### Git 提交规范
-```
-feat: 新功能
-fix: 修复 bug
-docs: 文档更新
-style: 代码格式调整
-refactor: 重构
-test: 测试相关
-chore: 构建/工具链
+```bash
+cd frontend
+npm run build
 ```
 
-## 📄 License
+---
 
-MIT License
+## 7. 设计原则
 
-## 👥 团队
-
-- 项目负责人：[姓名]
-- 后端开发：[姓名]
-- 前端开发：[姓名]
-- 测试工程师：[姓名]
+- 第一性原理：先识别 API 测试闭环的本质数据和行为。
+- 奥姆剃刀原则：当前阶段只保留必要功能，拒绝过度设计。
+- KISS：优先清晰、直接、可维护的实现。
+- 可测试：核心逻辑必须有单元测试或 API 测试覆盖。

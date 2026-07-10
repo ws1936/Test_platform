@@ -1,0 +1,456 @@
+openapi: 3.0.3
+info:
+  title: API Automation Testing Platform
+  version: 0.1.0
+  description: API 自动化测试平台 MVP 接口契约草案
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: success
+        data:
+          nullable: true
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+    ProjectCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+    EnvironmentCreate:
+      type: object
+      required: [name, base_url]
+      properties:
+        name:
+          type: string
+        base_url:
+          type: string
+        headers:
+          type: object
+          additionalProperties: true
+        variables:
+          type: object
+          additionalProperties: true
+        is_default:
+          type: boolean
+    CollectionCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+    TestCaseCreate:
+      type: object
+      required: [name, method, path]
+      properties:
+        name:
+          type: string
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+        path:
+          type: string
+        headers:
+          type: object
+          additionalProperties: true
+        query_params:
+          type: object
+          additionalProperties: true
+        body_type:
+          type: string
+          enum: [none, json, form, raw]
+        body:
+          nullable: true
+        assertions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        timeout_seconds:
+          type: integer
+          default: 30
+    RunCreate:
+      type: object
+      required: [environment_id, scope]
+      properties:
+        name:
+          type: string
+        environment_id:
+          type: string
+          format: uuid
+        scope:
+          type: string
+          enum: [case, collection, project]
+        collection_id:
+          type: string
+          format: uuid
+          nullable: true
+        case_id:
+          type: string
+          format: uuid
+          nullable: true
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: 用户登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: 刷新 Token
+      responses:
+        '200':
+          description: 刷新成功
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 退出登录
+      responses:
+        '200':
+          description: 退出成功
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: 当前用户信息
+      responses:
+        '200':
+          description: 成功
+  /users:
+    get:
+      tags: [User]
+      summary: 用户列表
+      responses:
+        '200':
+          description: 成功
+  /users/{user_id}:
+    get:
+      tags: [User]
+      summary: 用户详情
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+    put:
+      tags: [User]
+      summary: 更新用户
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+    delete:
+      tags: [User]
+      summary: 禁用用户
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+  /projects:
+    post:
+      tags: [Project]
+      summary: 创建项目
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: 创建成功
+    get:
+      tags: [Project]
+      summary: 项目列表
+      responses:
+        '200':
+          description: 成功
+  /projects/{project_id}:
+    get:
+      tags: [Project]
+      summary: 项目详情
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+    put:
+      tags: [Project]
+      summary: 更新项目
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+    delete:
+      tags: [Project]
+      summary: 删除项目
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 删除成功
+  /projects/{project_id}/environments:
+    post:
+      tags: [Environment]
+      summary: 创建环境
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentCreate'
+      responses:
+        '201':
+          description: 创建成功
+    get:
+      tags: [Environment]
+      summary: 环境列表
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+  /projects/{project_id}/collections:
+    post:
+      tags: [Collection]
+      summary: 创建集合
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CollectionCreate'
+      responses:
+        '201':
+          description: 创建成功
+    get:
+      tags: [Collection]
+      summary: 集合列表
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+  /collections/{collection_id}/cases:
+    post:
+      tags: [TestCase]
+      summary: 创建用例
+      parameters:
+        - name: collection_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestCaseCreate'
+      responses:
+        '201':
+          description: 创建成功
+    get:
+      tags: [TestCase]
+      summary: 用例列表
+      parameters:
+        - name: collection_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+  /cases/{case_id}/run:
+    post:
+      tags: [Run]
+      summary: 执行单用例
+      parameters:
+        - name: case_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: 执行完成
+  /projects/{project_id}/runs:
+    post:
+      tags: [Run]
+      summary: 创建执行批次
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunCreate'
+      responses:
+        '201':
+          description: 创建成功
+    get:
+      tags: [Run]
+      summary: 执行历史
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+  /runs/{run_id}:
+    get:
+      tags: [Run]
+      summary: 执行详情
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+  /runs/{run_id}/results:
+    get:
+      tags: [Run]
+      summary: 执行结果列表
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
+  /results/{result_id}:
+    get:
+      tags: [Run]
+      summary: 单条结果详情
+      parameters:
+        - name: result_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功
