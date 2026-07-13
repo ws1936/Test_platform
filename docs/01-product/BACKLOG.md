@@ -34,8 +34,8 @@
 | F001 | 用户登录 | P0 | Done | 已具备登录、JWT 鉴权能力 |
 | F002 | 用户管理 | P0 | Done | 已具备基础用户 CRUD、禁用、改密码能力 |
 | F003 | 角色管理 | P0 | Done | 已具备基础角色 CRUD，后续可完善细粒度权限 |
-| F004 | 项目管理 | P0 | Todo | API 测试项目 CRUD |
-| F005 | 环境管理 | P0 | Todo | Base URL、Headers、Variables、默认环境 |
+| F004 | 项目管理 | P0 | Done | API 测试项目 CRUD + owner/superuser 鉴权 + 跨用户隔离 |
+| F005 | 环境管理 | P0 | Done | Base URL、Headers、Variables、默认环境（单项目唯一 + 默认互斥 + 默认不可删除） |
 | F006 | 集合管理 | P0 | Todo | API 用例分组，MVP 只做一层集合 |
 | F007 | API 用例管理 | P0 | Todo | 请求方法、路径、Headers、Query、Body、断言 |
 | F008 | 变量替换 | P0 | Todo | 支持 `{{var}}`、`{{$timestamp}}`、`{{$uuid}}` 等 |

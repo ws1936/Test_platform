@@ -13,6 +13,7 @@ from app.common.exceptions import (
     TokenInvalidException,
 )
 from app.common.security import TokenError, decode_token
+from app.domain.environment.service import EnvironmentService
 from app.domain.project.service import ProjectService
 from app.domain.role.service import RoleService
 from app.domain.user.model import User
@@ -44,6 +45,13 @@ async def get_project_service(
 ) -> ProjectService:
     """Get project service dependency."""
     return ProjectService(db)
+
+
+async def get_environment_service(
+    db: AsyncSession = Depends(get_db),
+) -> EnvironmentService:
+    """Get environment service dependency (F005)."""
+    return EnvironmentService(db)
 
 
 async def get_access_token(

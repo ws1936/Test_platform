@@ -12,6 +12,10 @@ from app.common.exceptions import AppException
 from app.config import settings, validate_secrets
 from app.infrastructure.database.session import close_db, init_db
 from app.interfaces.http.auth_router import router as auth_router
+from app.interfaces.http.environment_router import (
+    environment_router,
+    project_router as environment_project_router,
+)
 from app.interfaces.http.project_router import router as project_router
 from app.interfaces.http.role_router import router as role_router
 from app.interfaces.http.user_router import admin_router, me_router
@@ -118,6 +122,8 @@ app.include_router(me_router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin_router, prefix=settings.API_V1_PREFIX)
 app.include_router(project_router, prefix=settings.API_V1_PREFIX)
 app.include_router(role_router, prefix=settings.API_V1_PREFIX)
+app.include_router(environment_project_router, prefix=settings.API_V1_PREFIX)
+app.include_router(environment_router, prefix=settings.API_V1_PREFIX)
 
 
 # Health check endpoint

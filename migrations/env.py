@@ -13,6 +13,7 @@ from app.infrastructure.database.session import Base
 from app.domain.user.model import User  # Import all models here
 from app.domain.role.model import Role  # noqa: F401
 from app.domain.project.model import ApiProject  # noqa: F401
+from app.domain.environment.model import ApiEnvironment  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -208,3 +208,16 @@ class ProjectNotFoundException(NotFoundException):
     ):
         super().__init__(message=message, details=details)
         self.code = "PROJECT_NOT_FOUND"  # business code 30001
+
+
+# 30002 - environment not found
+class EnvironmentNotFoundException(NotFoundException):
+    """API testing environment does not exist."""
+
+    def __init__(
+        self,
+        message: str = "Environment not found",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(message=message, details=details)
+        self.code = "ENVIRONMENT_NOT_FOUND"  # business code 30002
