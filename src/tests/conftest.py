@@ -80,6 +80,7 @@ async def db_engine():
     # Import models so they register on Base.metadata
     from app.domain.user.model import User  # noqa: F401
     from app.domain.role.model import Role  # noqa: F401
+    from app.domain.project.model import ApiProject  # noqa: F401
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
@@ -131,6 +132,7 @@ async def app(db_engine):
     from app.interfaces.http.auth_router import router as auth_router
     from app.interfaces.http.user_router import admin_router, me_router
     from app.interfaces.http.role_router import router as role_router
+    from app.interfaces.http.project_router import router as project_router
 
     session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
 
@@ -176,6 +178,7 @@ async def app(db_engine):
     test_app.include_router(me_router, prefix="/api/v1")
     test_app.include_router(admin_router, prefix="/api/v1")
     test_app.include_router(role_router, prefix="/api/v1")
+    test_app.include_router(project_router, prefix="/api/v1")
 
     test_app.dependency_overrides[get_db] = _override_get_db
     yield test_app

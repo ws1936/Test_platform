@@ -13,6 +13,7 @@ from app.common.exceptions import (
     TokenInvalidException,
 )
 from app.common.security import TokenError, decode_token
+from app.domain.project.service import ProjectService
 from app.domain.role.service import RoleService
 from app.domain.user.model import User
 from app.domain.user.service import UserService
@@ -36,6 +37,13 @@ async def get_role_service(
 ) -> RoleService:
     """Get role service dependency."""
     return RoleService(db)
+
+
+async def get_project_service(
+    db: AsyncSession = Depends(get_db),
+) -> ProjectService:
+    """Get project service dependency."""
+    return ProjectService(db)
 
 
 async def get_access_token(

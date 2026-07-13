@@ -7,11 +7,12 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.exceptions import AppException
 from app.config import settings, validate_secrets
 from app.infrastructure.database.session import close_db, init_db
 from app.interfaces.http.auth_router import router as auth_router
+from app.interfaces.http.project_router import router as project_router
 from app.interfaces.http.role_router import router as role_router
 from app.interfaces.http.user_router import admin_router, me_router
 
@@ -63,7 +64,7 @@ async def validation_exception_handler(
             "message": error["msg"],
             "type": error["type"],
         })
-    
+
     return JSONResponse(
         status_code=422,
         content={
@@ -74,24 +75,33 @@ async def validation_exception_handler(
     )
 
 
+# Register the application-level exception handler against our own
+# ``AppException`` base class (and ``Exception`` as a safety net for
+# unexpected errors). Registering against ``AppException`` is more
+# precise than ``Exception`` and matches every business-defined
+# exception (NotFound, Forbidden, Conflict, ...).
+@app.exception_handler(AppException)
+async def app_exception_handler(
+    request: Request,
+    exc: AppException,
+) -> JSONResponse:
+    """Handle business-level exceptions (NotFound / Forbidden / ...)."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "code": exc.code,
+            "message": exc.message,
+            "details": exc.details,
+        },
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
-    """Handle global exceptions."""
-    from app.common.exceptions import AppException
-    
-    if isinstance(exc, AppException):
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "code": exc.code,
-                "message": exc.message,
-                "details": exc.details,
-            },
-        )
-    
+    """Last-resort handler for unexpected exceptions."""
     return JSONResponse(
         status_code=500,
         content={
@@ -106,6 +116,7 @@ async def global_exception_handler(
 app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
 app.include_router(me_router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin_router, prefix=settings.API_V1_PREFIX)
+app.include_router(project_router, prefix=settings.API_V1_PREFIX)
 app.include_router(role_router, prefix=settings.API_V1_PREFIX)
 
 
@@ -126,6 +137,7 @@ async def health_check() -> dict:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
