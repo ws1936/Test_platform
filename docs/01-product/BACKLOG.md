@@ -41,7 +41,7 @@
 | F008 | 变量替换 | P0 | Done | `${var}` 占位符替换 + `${timestamp}` 内置变量 + 缺失变量保留占位符并 WARNING + 调用方控制合并优先级（无 Router/DB） |
 | F009 | 断言引擎 | P0 | Done | 5 种断言 × 12 个操作符规则化引擎 + 集成 F008 变量替换 + 手写 json_path + RFC7230 header 大小写不敏感 + 错误码 31003/31004/31005（无 Router/DB） |
 | F010 | pytest / API 执行 | P0 | Done | httpx 同步执行 + RequestBuilder/ApiExecutor/TestRunner 引擎 + 6 个 HTTP 端点 + 错误码 32001/32002/32003 + 敏感头脱敏 + 64KB body 截断 + 复用 F008/F009（无 Celery/Redis） |
-| F011 | 测试报告 | P0 | Todo | 执行批次、结果列表、结果详情、失败原因 |
+| F011 | 测试报告 | P0 | Done | 3 个聚合端点（单 run 概览 / 项目级概览 / 失败原因列表）+ TestRunResponse 新增 pass_rate/elapsed_seconds 计算字段 + list_project_runs 加 status 过滤 + 无新表（复用 F010 表） |
 | F012 | Swagger / OpenAPI 导入 | P1 | Todo | 从 OpenAPI 文档生成基础 API 用例 |
 | F013 | 批量生成基础用例 | P1 | Todo | 基于导入接口批量生成用例草稿 |
 | F014 | 有限并发执行 | P1 | Todo | 提升执行效率，但不做分布式执行 |

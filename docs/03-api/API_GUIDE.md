@@ -139,14 +139,17 @@
 - ``status``（int 0/1）在传输层暴露为 ``enabled``（bool）。
 - ``POST /test-cases/{case_id}/run`` 需传入 ``environment_id`` 查询参数；返回结构与下面 `POST /projects/{project_id}/runs` 相同。
 
-### 3.8 执行与报告（F010 已实现）
+### 3.8 执行与报告（F010 + F011 已实现）
 
 | 方法 | 路径 | 说明 | 认证 |
 |------|------|------|------|
 | POST | `/projects/{project_id}/runs` | 创建并同步执行批次（scope: case/collection/project） | 是 |
-| GET | `/projects/{project_id}/runs` | 执行历史（按创建时间倒序） | 是 |
-| GET | `/runs/{run_id}` | 执行详情 | 是 |
+| GET | `/projects/{project_id}/runs` | 执行历史（按创建时间倒序）。F011 增 ``?status=`` 过滤参数 | 是 |
+| GET | `/projects/{project_id}/runs/summary` | **F011** 项目级聚合概览（最近 N 个 run + 总体 pass_rate） | 是 |
+| GET | `/runs/{run_id}` | 执行详情。F011 响应增 ``pass_rate`` + ``elapsed_seconds`` 计算字段 | 是 |
+| GET | `/runs/{run_id}/summary` | **F011** 单 run 概览 | 是 |
 | GET | `/runs/{run_id}/results` | 执行结果列表 | 是 |
+| GET | `/runs/{run_id}/failures` | **F011** 失败原因列表（平铺 assertions_snapshot，引擎错误也包含） | 是 |
 | GET | `/results/{result_id}` | 单条结果详情 | 是 |
 
 说明：
@@ -169,8 +172,15 @@
 - 执行错误以单条 ``status="error"`` 结果行落库；``error_code`` 字段
   取值 ``API_EXECUTION_TIMEOUT`` (32002) / ``API_CONNECTION_ERROR`` (32003)
   / ``API_EXECUTION_ERROR`` (32001)，运行本身不报错。
-- F011 报告会复用 ``TestRun`` / ``TestResult`` 表，因此 §3.8 暂不
-  单独提供报告端点。
+- F011 新增 3 个聚合端点（``/summary`` × 2 + ``/failures``），与
+  ``TestRun`` / ``TestResult`` 表是只读关系，不引入新表。
+- F011 的 ``pass_rate`` 计算规则：``passed / total``（4 位小数）；
+  ``total = 0`` 时返回 ``None``（避免 0/0 显示为 NaN）。
+- F011 的 ``elapsed_seconds`` 计算规则：
+  ``(finished_at - started_at).total_seconds()``，3 位小数。
+- F011 的 ``/failures`` 端点会把 ``assertions_snapshot`` 中每条
+  ``passed=False`` 的断言平铺成一项；``status="error"`` 的 result
+  会被转成 ``assertion_type="execution"`` 单项。
 
 ---
 

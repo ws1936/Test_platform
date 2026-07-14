@@ -46,23 +46,32 @@ class TestRunRepository:
         project_id: UUID,
         limit: int = 50,
         offset: int = 0,
+        status: Optional[str] = None,
     ) -> tuple[list[ApiTestRun], int]:
         """Return ``(items, total)`` for a project, newest first.
 
         ``total`` is computed *without* pagination so the UI can
         render an accurate count. Ordering is by ``created_at DESC``
         so the most recent run is on top.
+
+        F011 added the optional ``status`` filter so the history
+        view can show only the failed runs (or any other status).
+        The total still reflects the *filtered* set.
         """
+        conditions = [ApiTestRun.project_id == project_id]
+        if status is not None:
+            conditions.append(ApiTestRun.status == status)
+
         total_stmt = (
             select(func.count())
             .select_from(ApiTestRun)
-            .where(ApiTestRun.project_id == project_id)
+            .where(*conditions)
         )
         total = (await self.session.execute(total_stmt)).scalar_one()
 
         rows_stmt = (
             select(ApiTestRun)
-            .where(ApiTestRun.project_id == project_id)
+            .where(*conditions)
             .order_by(ApiTestRun.created_at.desc())
             .limit(limit)
             .offset(offset)

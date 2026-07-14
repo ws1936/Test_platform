@@ -77,6 +77,7 @@ async def db_engine():
     from app.domain.environment.model import ApiEnvironment  # noqa: F401
     from app.domain.test_case.model import ApiTestCase  # noqa: F401
     from app.domain.suite.model import ApiSuite, ApiSuiteCase  # noqa: F401,E501
+    from app.domain.test_run.model import ApiTestResult, ApiTestRun  # noqa: F401,E501
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
