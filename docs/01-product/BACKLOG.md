@@ -36,10 +36,10 @@
 | F003 | 角色管理 | P0 | Done | 已具备基础角色 CRUD，后续可完善细粒度权限 |
 | F004 | 项目管理 | P0 | Done | API 测试项目 CRUD + owner/superuser 鉴权 + 跨用户隔离 |
 | F005 | 环境管理 | P0 | Done | Base URL、Headers、Variables、默认环境（单项目唯一 + 默认互斥 + 默认不可删除） |
-| F006 | 集合管理 | P0 | Todo | API 用例分组，MVP 只做一层集合 |
-| F007 | API 用例管理 | P0 | Todo | 请求方法、路径、Headers、Query、Body、断言 |
-| F008 | 变量替换 | P0 | Todo | 支持 `{{var}}`、`{{$timestamp}}`、`{{$uuid}}` 等 |
-| F009 | 断言引擎 | P0 | Todo | status_code、json_path、header、response_time、body_contains |
+| F006 | 集合管理 | P0 | Done | Suite CRUD + 批量添加用例（事务 + 幂等 + 默认排序 + 项目内唯一 + owner 鉴权） |
+| F007 | API 用例管理 | P0 | Done | 用例 CRUD + 启用/禁用 + 套件/项目双维度列表 + owner 鉴权 + suite_cases 级联清理 |
+| F008 | 变量替换 | P0 | Done | `${var}` 占位符替换 + `${timestamp}` 内置变量 + 缺失变量保留占位符并 WARNING + 调用方控制合并优先级（无 Router/DB） |
+| F009 | 断言引擎 | P0 | Done | 5 种断言 × 12 个操作符规则化引擎 + 集成 F008 变量替换 + 手写 json_path + RFC7230 header 大小写不敏感 + 错误码 31003/31004/31005（无 Router/DB） |
 | F010 | pytest / API 执行 | P0 | Todo | 使用 httpx 执行 API 用例并记录结果 |
 | F011 | 测试报告 | P0 | Todo | 执行批次、结果列表、结果详情、失败原因 |
 | F012 | Swagger / OpenAPI 导入 | P1 | Todo | 从 OpenAPI 文档生成基础 API 用例 |
