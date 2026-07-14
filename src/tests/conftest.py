@@ -13,8 +13,8 @@ from typing import AsyncGenerator
 import pytest
 import pytest_asyncio
 
-
 # === Pytest configuration ===
+
 
 def pytest_collection_modifyitems(config, items):
     """Mark async tests automatically."""
@@ -26,6 +26,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 # === Test environment setup ===
+
 
 @pytest.fixture(autouse=True)
 def _setup_test_env(monkeypatch):
@@ -55,6 +56,7 @@ def _reset_auth_state():
 
 # === Database fixture ===
 
+
 @pytest_asyncio.fixture
 async def db_engine():
     """Create a fresh in-memory SQLite engine per test.
@@ -67,11 +69,14 @@ async def db_engine():
     from sqlalchemy.pool import StaticPool
 
     from app.infrastructure.database.session import Base
+
     # Import models so they register on Base.metadata
     from app.domain.user.model import User  # noqa: F401
     from app.domain.role.model import Role  # noqa: F401
     from app.domain.project.model import ApiProject  # noqa: F401
     from app.domain.environment.model import ApiEnvironment  # noqa: F401
+    from app.domain.test_case.model import ApiTestCase  # noqa: F401
+    from app.domain.suite.model import ApiSuite, ApiSuiteCase  # noqa: F401,E501
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
@@ -79,6 +84,19 @@ async def db_engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    # Enable SQLite foreign-key enforcement so ``ON DELETE CASCADE``
+    # on ``api_suite_cases`` actually fires during tests — matching
+    # PostgreSQL behaviour in production. Mirrors the per-engine
+    # listener used by ``test_test_case_service.py`` / ``test_suite_service.py``.
+    from sqlalchemy import event
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _enable_sqlite_fk(dbapi_connection, _):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
@@ -109,6 +127,7 @@ async def db_session(db_engine) -> AsyncGenerator:
 
 # === Test app + client fixtures ===
 
+
 @pytest_asyncio.fixture
 async def app(db_engine):
     """Build a FastAPI app with overridden DB dependency."""
@@ -127,6 +146,18 @@ async def app(db_engine):
     from app.interfaces.http.environment_router import (
         environment_router,
         project_router as environment_project_router,
+    )
+    from app.interfaces.http.suites import router as suites_router
+    from app.interfaces.http.test_case_router import (
+        case_router as test_case_case_router,
+        collection_router as test_case_collection_router,
+        project_router as test_case_project_router,
+    )
+    from app.interfaces.http.test_run_router import (
+        case_router as test_run_case_router,
+        result_router as test_run_result_router,
+        run_resource_router as test_run_resource_router,
+        run_router as test_run_project_router,
     )
 
     session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
@@ -176,6 +207,14 @@ async def app(db_engine):
     test_app.include_router(project_router, prefix="/api/v1")
     test_app.include_router(environment_project_router, prefix="/api/v1")
     test_app.include_router(environment_router, prefix="/api/v1")
+    test_app.include_router(suites_router, prefix="/api/v1")
+    test_app.include_router(test_case_collection_router, prefix="/api/v1")
+    test_app.include_router(test_case_project_router, prefix="/api/v1")
+    test_app.include_router(test_case_case_router, prefix="/api/v1")
+    test_app.include_router(test_run_project_router, prefix="/api/v1")
+    test_app.include_router(test_run_resource_router, prefix="/api/v1")
+    test_app.include_router(test_run_result_router, prefix="/api/v1")
+    test_app.include_router(test_run_case_router, prefix="/api/v1")
 
     test_app.dependency_overrides[get_db] = _override_get_db
     yield test_app
@@ -192,6 +231,7 @@ async def client(app):
 
 
 # === Common payload helpers ===
+
 
 @pytest.fixture
 def user_payload() -> dict:
@@ -211,3 +251,38 @@ async def registered_user(client, user_payload):
     assert resp.status_code == 201, resp.text
     body = resp.json()
     return body["token"]["access_token"], body["token"]["refresh_token"]
+
+
+@pytest_asyncio.fixture
+async def create_test_cases(db_session):
+    """Seed F007 test-case identities for F006 association tests.
+
+    The test-case HTTP module is intentionally not part of F006.  This small
+    fixture creates the persisted rows that the suite service is required to
+    validate, avoiding fake UUIDs that would incorrectly exercise the 404
+    branch.
+    """
+    from uuid import UUID
+
+    from app.domain.test_case.model import ApiTestCase
+
+    async def _create(project_id: str | UUID, case_ids: list[str | UUID]) -> list[UUID]:
+        normalized = [UUID(str(case_id)) for case_id in case_ids]
+        for index, case_id in enumerate(normalized):
+            db_session.add(
+                ApiTestCase(
+                    id=case_id,
+                    project_id=UUID(str(project_id)),
+                    name=f"case-{index}",
+                    method="GET",
+                    path=f"/case-{index}",
+                    body_type="none",
+                    timeout_seconds=30,
+                    status=1,
+                    sort_order=index,
+                )
+            )
+        await db_session.commit()
+        return normalized
+
+    return _create

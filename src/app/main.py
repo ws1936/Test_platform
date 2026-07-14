@@ -18,6 +18,18 @@ from app.interfaces.http.environment_router import (
 )
 from app.interfaces.http.project_router import router as project_router
 from app.interfaces.http.role_router import router as role_router
+from app.interfaces.http.suites import router as suites_router
+from app.interfaces.http.test_case_router import (
+    case_router as test_case_case_router,
+    collection_router as test_case_collection_router,
+    project_router as test_case_project_router,
+)
+from app.interfaces.http.test_run_router import (
+    case_router as test_run_case_router,
+    result_router as test_run_result_router,
+    run_resource_router as test_run_resource_router,
+    run_router as test_run_project_router,
+)
 from app.interfaces.http.user_router import admin_router, me_router
 
 
@@ -63,11 +75,13 @@ async def validation_exception_handler(
     """Handle validation errors."""
     errors = []
     for error in exc.errors():
-        errors.append({
-            "field": ".".join(str(loc) for loc in error["loc"]),
-            "message": error["msg"],
-            "type": error["type"],
-        })
+        errors.append(
+            {
+                "field": ".".join(str(loc) for loc in error["loc"]),
+                "message": error["msg"],
+                "type": error["type"],
+            }
+        )
 
     return JSONResponse(
         status_code=422,
@@ -124,6 +138,14 @@ app.include_router(project_router, prefix=settings.API_V1_PREFIX)
 app.include_router(role_router, prefix=settings.API_V1_PREFIX)
 app.include_router(environment_project_router, prefix=settings.API_V1_PREFIX)
 app.include_router(environment_router, prefix=settings.API_V1_PREFIX)
+app.include_router(suites_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_case_collection_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_case_project_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_case_case_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_run_project_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_run_resource_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_run_result_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_run_case_router, prefix=settings.API_V1_PREFIX)
 
 
 # Health check endpoint

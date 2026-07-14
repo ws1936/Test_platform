@@ -40,7 +40,7 @@
 | F007 | API 用例管理 | P0 | Done | 用例 CRUD + 启用/禁用 + 套件/项目双维度列表 + owner 鉴权 + suite_cases 级联清理 |
 | F008 | 变量替换 | P0 | Done | `${var}` 占位符替换 + `${timestamp}` 内置变量 + 缺失变量保留占位符并 WARNING + 调用方控制合并优先级（无 Router/DB） |
 | F009 | 断言引擎 | P0 | Done | 5 种断言 × 12 个操作符规则化引擎 + 集成 F008 变量替换 + 手写 json_path + RFC7230 header 大小写不敏感 + 错误码 31003/31004/31005（无 Router/DB） |
-| F010 | pytest / API 执行 | P0 | Todo | 使用 httpx 执行 API 用例并记录结果 |
+| F010 | pytest / API 执行 | P0 | Done | httpx 同步执行 + RequestBuilder/ApiExecutor/TestRunner 引擎 + 6 个 HTTP 端点 + 错误码 32001/32002/32003 + 敏感头脱敏 + 64KB body 截断 + 复用 F008/F009（无 Celery/Redis） |
 | F011 | 测试报告 | P0 | Todo | 执行批次、结果列表、结果详情、失败原因 |
 | F012 | Swagger / OpenAPI 导入 | P1 | Todo | 从 OpenAPI 文档生成基础 API 用例 |
 | F013 | 批量生成基础用例 | P1 | Todo | 基于导入接口批量生成用例草稿 |

@@ -221,3 +221,105 @@ class EnvironmentNotFoundException(NotFoundException):
     ):
         super().__init__(message=message, details=details)
         self.code = "ENVIRONMENT_NOT_FOUND"  # business code 30002
+
+
+# 30003 - suite not found
+class SuiteNotFoundException(NotFoundException):
+    """API testing suite does not exist."""
+
+    def __init__(
+        self,
+        message: str = "Suite not found",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(message=message, details=details)
+        self.code = "SUITE_NOT_FOUND"  # business code 30003
+
+
+# 30004 - test case not found
+class TestCaseNotFoundException(NotFoundException):
+    """A requested API test case does not exist in the target project."""
+
+    def __init__(
+        self,
+        message: str = "Test case not found",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(message=message, details=details)
+        self.code = "TEST_CASE_NOT_FOUND"  # business code 30004
+
+
+# 30005 - test run not found (F010)
+class TestRunNotFoundException(NotFoundException):
+    """An API test run does not exist."""
+
+    def __init__(
+        self,
+        message: str = "Test run not found",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(message=message, details=details)
+        self.code = "TEST_RUN_NOT_FOUND"  # business code 30005
+
+
+# 30006 - test result not found (F010)
+class TestResultNotFoundException(NotFoundException):
+    """A single test execution result does not exist."""
+
+    def __init__(
+        self,
+        message: str = "Test result not found",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(message=message, details=details)
+        self.code = "TEST_RESULT_NOT_FOUND"  # business code 30006
+
+
+# 32001 - API execution error (F010)
+class ApiExecutionException(AppException):
+    """Generic API execution failure (F010).
+
+    The HTTP layer returns ``500`` with business code ``API_EXECUTION_ERROR``.
+    The specialised :class:`ApiExecutionTimeoutException` and
+    :class:`ApiConnectionException` subclasses carry the same status
+    code but more specific business codes so the UI can render
+    meaningful messages.
+    """
+
+    def __init__(
+        self,
+        message: str = "API execution failed",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(
+            message=message,
+            code="API_EXECUTION_ERROR",
+            status_code=500,
+            details=details,
+        )
+
+
+# 32002 - API request timeout (F010)
+class ApiExecutionTimeoutException(ApiExecutionException):
+    """The HTTP request to the system under test timed out (F010)."""
+
+    def __init__(
+        self,
+        message: str = "API request timed out",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(message=message, details=details)
+        self.code = "API_EXECUTION_TIMEOUT"  # business code 32002
+
+
+# 32003 - API connection error (F010)
+class ApiConnectionException(ApiExecutionException):
+    """The HTTP request could not reach the system under test (F010)."""
+
+    def __init__(
+        self,
+        message: str = "API connection failed",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(message=message, details=details)
+        self.code = "API_CONNECTION_ERROR"  # business code 32003

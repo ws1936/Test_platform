@@ -64,3 +64,41 @@ class UnsupportedAssertionOperatorError(AssertionEngineError):
     Maps to **31005**. The combination rules are documented in
     :data:`app.domain.test_engine.assertions._TYPE_TO_OPERATORS`.
     """
+
+
+# === F010 — API execution errors ===========================================
+#
+# These mirror ERROR_CODE.md §5 (32001 / 32002 / 32003) and are raised
+# by :mod:`app.domain.test_engine.executor`. They deliberately live
+# alongside the F009 exceptions so a single ``ApiExecutorError`` /
+# ``AssertionEngineError`` ``except`` block can cover the whole engine.
+#
+# The HTTP layer (:mod:`app.common.exceptions`) wraps these into
+# ``ApiExecutionException`` family for transport.
+
+
+class ApiExecutorError(Exception):
+    """Base class for all API execution errors raised by the engine."""
+
+
+class ApiExecutionError(ApiExecutorError):
+    """Generic API execution failure.
+
+    Maps to **32001**. Use the more specific
+    :class:`ApiExecutionTimeoutError` or :class:`ApiConnectionError`
+    when the underlying httpx exception is known.
+    """
+
+
+class ApiExecutionTimeoutError(ApiExecutionError):
+    """The HTTP request timed out.
+
+    Maps to **32002**. Raised from ``httpx.TimeoutException``.
+    """
+
+
+class ApiConnectionError(ApiExecutionError):
+    """The HTTP request could not establish a connection.
+
+    Maps to **32003**. Raised from ``httpx.ConnectError``.
+    """

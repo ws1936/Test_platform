@@ -16,6 +16,8 @@ from app.common.security import TokenError, decode_token
 from app.domain.environment.service import EnvironmentService
 from app.domain.project.service import ProjectService
 from app.domain.role.service import RoleService
+from app.domain.suite.service import SuiteService
+from app.domain.test_case.service import TestCaseService
 from app.domain.user.model import User
 from app.domain.user.service import UserService
 from app.infrastructure.database.session import get_db
@@ -52,6 +54,35 @@ async def get_environment_service(
 ) -> EnvironmentService:
     """Get environment service dependency (F005)."""
     return EnvironmentService(db)
+
+
+async def get_suite_service(
+    db: AsyncSession = Depends(get_db),
+) -> SuiteService:
+    """Get suite service dependency (F006)."""
+    return SuiteService(db)
+
+
+async def get_test_case_service(
+    db: AsyncSession = Depends(get_db),
+) -> TestCaseService:
+    """Get test case service dependency (F007)."""
+    return TestCaseService(db)
+
+
+async def get_test_run_service(
+    db: AsyncSession = Depends(get_db),
+) -> "TestRunService":
+    """Get test run service dependency (F010).
+
+    Imported lazily inside the function body to avoid a circular
+    import between :mod:`app.common.dependencies` and
+    :mod:`app.domain.test_run.service` (the latter imports
+    :mod:`app.common.exceptions`).
+    """
+    from app.domain.test_run.service import TestRunService
+
+    return TestRunService(db)
 
 
 async def get_access_token(
