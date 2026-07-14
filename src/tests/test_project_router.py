@@ -1,12 +1,14 @@
 """Unit tests for the project management router (F004).
 
-Covers the five scenarios requested:
+Covers the complete project lifecycle and authorization boundaries:
 
 * Create  — valid payload returns 201, missing fields return 422
 * List    — returns ONLY the caller's own projects
 * Detail  — non-owner / non-admin gets 403, missing project gets 404
 * Update  — only owner / admin can update, validation errors return 422
 * Delete  — only owner / admin can delete, deleted project is invisible
+* Isolation — a regular user cannot list, read, update, or delete another
+  regular user's project
 
 All tests use the real ``/api/v1/auth/register`` + JWT flow so they
 exercise the same auth + exception-handling path as production.
@@ -65,11 +67,13 @@ def _auth(token: str) -> dict:
 async def _create_project(
     client, token: str, *, name: str, description: str = "auto"
 ):
-    return await client.post(
+    response = await client.post(
         "/api/v1/projects",
         json={"name": name, "description": description},
         headers=_auth(token),
     )
+    assert response.status_code == 201, response.text
+    return response
 
 
 # === 1) CREATE ===
@@ -115,8 +119,13 @@ async def test_create_project_extra_owner_id_is_rejected_with_422(client):
 
 async def test_create_project_name_too_long_returns_422(client):
     user = await _register_user(client, username="dave", email="dave@example.com")
-    resp = await _create_project(client, user["token"], name="x" * 101)
+    resp = await client.post(
+        "/api/v1/projects",
+        json={"name": "x" * 101, "description": "auto"},
+        headers=_auth(user["token"]),
+    )
     assert resp.status_code == 422
+    assert resp.json()["code"] == "VALIDATION_ERROR"
 
 
 async def test_create_project_without_token_returns_401(client):
@@ -177,6 +186,69 @@ async def test_list_with_search_filters_by_name(client):
 async def test_list_without_token_returns_401(client):
     resp = await client.get("/api/v1/projects")
     assert resp.status_code == 401
+
+
+async def test_regular_users_are_fully_isolated_from_each_others_projects(client):
+    """User A cannot discover or operate user B's project.
+
+    A separate bootstrap superuser creates two *regular* users so this test
+    cannot pass accidentally via the service's documented admin override.
+    """
+    admin = await _register_user(
+        client, username="bootstrap", email="bootstrap@example.com"
+    )
+    user_a = await _register_user(
+        client,
+        username="regular_a",
+        email="regular_a@example.com",
+        admin_token=admin["token"],
+    )
+    user_b = await _register_user(
+        client,
+        username="regular_b",
+        email="regular_b@example.com",
+        admin_token=admin["token"],
+    )
+    created = await _create_project(
+        client, user_b["token"], name="B Private Project", description="original"
+    )
+    project_id = created.json()["id"]
+
+    # A cannot discover B's project through the collection endpoint.
+    listing = await client.get("/api/v1/projects", headers=_auth(user_a["token"]))
+    assert listing.status_code == 200, listing.text
+    assert listing.json()["total"] == 0
+    assert all(item["id"] != project_id for item in listing.json()["items"])
+
+    # A cannot read, mutate, or delete B's project by guessing its UUID.
+    detail = await client.get(
+        f"/api/v1/projects/{project_id}", headers=_auth(user_a["token"])
+    )
+    assert detail.status_code == 403
+    assert detail.json()["code"] == "FORBIDDEN"
+
+    update = await client.put(
+        f"/api/v1/projects/{project_id}",
+        json={"name": "taken over", "description": "tampered"},
+        headers=_auth(user_a["token"]),
+    )
+    assert update.status_code == 403
+    assert update.json()["code"] == "FORBIDDEN"
+
+    delete = await client.delete(
+        f"/api/v1/projects/{project_id}", headers=_auth(user_a["token"])
+    )
+    assert delete.status_code == 403
+    assert delete.json()["code"] == "FORBIDDEN"
+
+    # Failed cross-user operations leave B's project untouched.
+    owner_detail = await client.get(
+        f"/api/v1/projects/{project_id}", headers=_auth(user_b["token"])
+    )
+    assert owner_detail.status_code == 200, owner_detail.text
+    assert owner_detail.json()["name"] == "B Private Project"
+    assert owner_detail.json()["description"] == "original"
+    assert owner_detail.json()["owner_id"] == user_b["id"]
 
 
 # === 3) DETAIL (forbidden for non-owner) ===
