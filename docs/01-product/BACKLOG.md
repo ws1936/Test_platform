@@ -42,7 +42,7 @@
 | F009 | 断言引擎 | P0 | Done | 5 种断言 × 12 个操作符规则化引擎 + 集成 F008 变量替换 + 手写 json_path + RFC7230 header 大小写不敏感 + 错误码 31003/31004/31005（无 Router/DB） |
 | F010 | pytest / API 执行 | P0 | Done | httpx 同步执行 + RequestBuilder/ApiExecutor/TestRunner 引擎 + 6 个 HTTP 端点 + 错误码 32001/32002/32003 + 敏感头脱敏 + 64KB body 截断 + 复用 F008/F009（无 Celery/Redis） |
 | F011 | 测试报告 | P0 | Done | 3 个聚合端点（单 run 概览 / 项目级概览 / 失败原因列表）+ TestRunResponse 新增 pass_rate/elapsed_seconds 计算字段 + list_project_runs 加 status 过滤 + 无新表（复用 F010 表） |
-| F012 | Swagger / OpenAPI 导入 | P1 | Todo | 从 OpenAPI 文档生成基础 API 用例 |
+| F012 | Swagger / OpenAPI 导入 | P1 | Done | 从 OpenAPI 3.x 文档生成基础 API 用例 + stdlib 解析 + 1 个 POST 端点（?dry_run=true） + 复用 F006/F007 零新表 |
 | F013 | 批量生成基础用例 | P1 | Todo | 基于导入接口批量生成用例草稿 |
 | F014 | 有限并发执行 | P1 | Todo | 提升执行效率，但不做分布式执行 |
 | F015 | 报告导出 | P1 | Todo | JSON / HTML 导出，Allure 可作为后续方向 |

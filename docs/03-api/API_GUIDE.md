@@ -139,7 +139,37 @@
 - ``status``（int 0/1）在传输层暴露为 ``enabled``（bool）。
 - ``POST /test-cases/{case_id}/run`` 需传入 ``environment_id`` 查询参数；返回结构与下面 `POST /projects/{project_id}/runs` 相同。
 
-### 3.8 执行与报告（F010 + F011 已实现）
+### 3.8 OpenAPI 导入（F012 已实现）
+
+| 方法 | 路径 | 说明 | 认证 |
+|------|------|------|------|
+| POST | `/projects/{project_id}/suites/{suite_id}/import/openapi` | 从 OpenAPI 3.x 文档预览/导入用例（一站式 + `?dry_run=true`） | 是 |
+
+请求体：
+
+```json
+{
+  "source_url": "https://example.com/openapi.json",
+  "source_content": { /* 或直接传 JSON 字典 */ },
+  "tags": ["pets"],                 // 可选，仅导入匹配 tag 的 operation
+  "on_conflict": "skip",            // skip | overwrite
+  "dry_run": true,                  // true=仅预览；false=真创建（需配合 preview_id）
+  "name_prefix": "openapi"          // 仅在 dry_run=false 时生效
+}
+```
+
+**Query 参数**（用于二次提交创建）：
+- `?dry_run=false&preview_id=<preview_id>`：消费首次缓存的预览并真创建用例。
+
+说明：
+- `source_url` 与 `source_content` 二选一；URL 仅接受 `http://` 或 `https://`，超时 5s。
+- 仅支持 OpenAPI 3.0 / 3.1；2.0 (Swagger) 报 `OPENAPI_PARSE_ERROR`。
+- 每个 operation 自动生成 1 个 `status_code in [200,201,202,204]` 断言（与 F009 兼容）。
+- 默认 `on_conflict=skip`（安全优先）；`overwrite` 会先删除该 suite 内同 `(method, path)` 旧用例再重建。
+- 鉴权：项目 owner 或 superuser。
+- 零新表；通过 `POST /collections/{suite_id}/cases` 写入 F007。
+
+### 3.9 执行与报告（F010 + F011 已实现）
 
 | 方法 | 路径 | 说明 | 认证 |
 |------|------|------|------|

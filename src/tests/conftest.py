@@ -1,9 +1,4 @@
-"""Pytest fixtures for backend tests.
-
-Uses an in-memory SQLite database via aiosqlite, overriding the production
-PostgreSQL engine. The test app is created lazily so model imports are
-deferred until first use.
-"""
+"""Pytest fixtures for backend tests."""
 
 from __future__ import annotations
 
@@ -13,11 +8,8 @@ from typing import AsyncGenerator
 import pytest
 import pytest_asyncio
 
-# === Pytest configuration ===
-
 
 def pytest_collection_modifyitems(config, items):
-    """Mark async tests automatically."""
     for item in items:
         if "asyncio" in item.keywords:
             continue
@@ -25,15 +17,10 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.asyncio)
 
 
-# === Test environment setup ===
-
-
 @pytest.fixture(autouse=True)
 def _setup_test_env(monkeypatch):
-    """Override configuration for tests BEFORE app imports."""
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-    # Use a 32+ char secret so ``validate_secrets`` is happy if invoked.
     monkeypatch.setenv(
         "JWT_SECRET_KEY",
         "test-secret-key-for-pytest-only-not-for-prod",
@@ -43,7 +30,6 @@ def _setup_test_env(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_auth_state():
-    """Clear the in-memory token blacklist & rate-limiters between tests."""
     from app.common.rate_limit import reset_for_tests
     from app.common.security import reset_blacklist_for_tests
 
@@ -54,30 +40,20 @@ def _reset_auth_state():
     reset_for_tests()
 
 
-# === Database fixture ===
-
-
 @pytest_asyncio.fixture
 async def db_engine():
-    """Create a fresh in-memory SQLite engine per test.
-
-    We use ``StaticPool`` + a single shared connection so every session
-    sees the same in-memory database. Tables are recreated between
-    tests via ``db_clean``.
-    """
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import StaticPool
 
     from app.infrastructure.database.session import Base
 
-    # Import models so they register on Base.metadata
-    from app.domain.user.model import User  # noqa: F401
-    from app.domain.role.model import Role  # noqa: F401
-    from app.domain.project.model import ApiProject  # noqa: F401
-    from app.domain.environment.model import ApiEnvironment  # noqa: F401
-    from app.domain.test_case.model import ApiTestCase  # noqa: F401
-    from app.domain.suite.model import ApiSuite, ApiSuiteCase  # noqa: F401,E501
-    from app.domain.test_run.model import ApiTestResult, ApiTestRun  # noqa: F401,E501
+    from app.domain.user.model import User
+    from app.domain.role.model import Role
+    from app.domain.project.model import ApiProject
+    from app.domain.environment.model import ApiEnvironment
+    from app.domain.test_case.model import ApiTestCase
+    from app.domain.suite.model import ApiSuite, ApiSuiteCase
+    from app.domain.test_run.model import ApiTestResult, ApiTestRun
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
@@ -86,10 +62,6 @@ async def db_engine():
         poolclass=StaticPool,
     )
 
-    # Enable SQLite foreign-key enforcement so ``ON DELETE CASCADE``
-    # on ``api_suite_cases`` actually fires during tests — matching
-    # PostgreSQL behaviour in production. Mirrors the per-engine
-    # listener used by ``test_test_case_service.py`` / ``test_suite_service.py``.
     from sqlalchemy import event
 
     @event.listens_for(engine.sync_engine, "connect")
@@ -106,7 +78,6 @@ async def db_engine():
 
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_db_between_tests(db_engine):
-    """Drop all tables after every test for isolation."""
     yield
     from app.infrastructure.database.session import Base
 
@@ -117,7 +88,6 @@ async def _clean_db_between_tests(db_engine):
 
 @pytest_asyncio.fixture
 async def db_session(db_engine) -> AsyncGenerator:
-    """Provide a transactional session that rolls back at end of test."""
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
     session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
@@ -126,12 +96,8 @@ async def db_session(db_engine) -> AsyncGenerator:
         await session.rollback()
 
 
-# === Test app + client fixtures ===
-
-
 @pytest_asyncio.fixture
 async def app(db_engine):
-    """Build a FastAPI app with overridden DB dependency."""
     from fastapi import FastAPI, Request
     from fastapi.exceptions import RequestValidationError
     from fastapi.responses import JSONResponse
@@ -160,6 +126,9 @@ async def app(db_engine):
         run_resource_router as test_run_resource_router,
         run_router as test_run_project_router,
     )
+    from app.interfaces.http.openapi_importer_router import (
+        import_router as openapi_importer_router,
+    )
 
     session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
 
@@ -169,10 +138,8 @@ async def app(db_engine):
 
     test_app = FastAPI(title="Test App")
 
-    # Mirror ``main.py``'s exception handlers so tests exercise the
-    # same error responses that production will emit.
     @test_app.exception_handler(RequestValidationError)
-    async def _validation_handler(request: Request, exc: RequestValidationError):
+    async def _validation_handler(request, exc):
         errors = [
             {
                 "field": ".".join(str(loc) for loc in err["loc"]),
@@ -191,7 +158,7 @@ async def app(db_engine):
         )
 
     @test_app.exception_handler(AppException)
-    async def _app_exception_handler(request: Request, exc: AppException):
+    async def _app_exception_handler(request, exc):
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -216,6 +183,7 @@ async def app(db_engine):
     test_app.include_router(test_run_resource_router, prefix="/api/v1")
     test_app.include_router(test_run_result_router, prefix="/api/v1")
     test_app.include_router(test_run_case_router, prefix="/api/v1")
+    test_app.include_router(openapi_importer_router, prefix="/api/v1")
 
     test_app.dependency_overrides[get_db] = _override_get_db
     yield test_app
@@ -223,15 +191,11 @@ async def app(db_engine):
 
 @pytest_asyncio.fixture
 async def client(app):
-    """Async HTTP test client (httpx)."""
     from httpx import ASGITransport, AsyncClient
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
-
-
-# === Common payload helpers ===
 
 
 @pytest.fixture
@@ -247,7 +211,6 @@ def user_payload() -> dict:
 
 @pytest_asyncio.fixture
 async def registered_user(client, user_payload):
-    """Register a user and return ``(access_token, refresh_token)``."""
     resp = await client.post("/api/v1/auth/register", json=user_payload)
     assert resp.status_code == 201, resp.text
     body = resp.json()
@@ -256,18 +219,11 @@ async def registered_user(client, user_payload):
 
 @pytest_asyncio.fixture
 async def create_test_cases(db_session):
-    """Seed F007 test-case identities for F006 association tests.
-
-    The test-case HTTP module is intentionally not part of F006.  This small
-    fixture creates the persisted rows that the suite service is required to
-    validate, avoiding fake UUIDs that would incorrectly exercise the 404
-    branch.
-    """
     from uuid import UUID
 
     from app.domain.test_case.model import ApiTestCase
 
-    async def _create(project_id: str | UUID, case_ids: list[str | UUID]) -> list[UUID]:
+    async def _create(project_id, case_ids):
         normalized = [UUID(str(case_id)) for case_id in case_ids]
         for index, case_id in enumerate(normalized):
             db_session.add(

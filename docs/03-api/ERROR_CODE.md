@@ -100,6 +100,23 @@
 
 ---
 
+### 5.1 F012 OpenAPI 导入（复用 400）
+
+F012 未引入新的整型错误码，所有导入异常统一映射到 HTTP 400，
+具体语义由响应体的字符串 `code` 字段区分：
+
+| HTTP | 业务 code | 说明 |
+|------|-----------|------|
+| 400 | `OPENAPI_PARSE_ERROR` | OpenAPI 文档无效 / 版本不支持（仅支持 3.0/3.1） |
+| 400 | `OPENAPI_FETCH_ERROR` | URL 抓取失败（非 http/https、超时、4xx/5xx、非 JSON） |
+| 400 | `OPENAPI_IMPORT_CONFLICT` | preview_id 失效 / 缓存丢失，需要重新预览 |
+| 400 | `VALIDATION_ERROR` | 请求体不合法（`source_url` 与 `source_content` 必须二选一 / URL scheme 非法） |
+
+设计依据：F012 属于客户端可控的输入校验，不属于系统/资源错误；
+为避免错误码表膨胀，统一用 400 + 字符串 code 区分。
+
+---
+
 ## 6. 使用原则
 
 1. HTTP 状态码表达通用语义。

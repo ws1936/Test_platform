@@ -24,6 +24,9 @@ from app.interfaces.http.test_case_router import (
     collection_router as test_case_collection_router,
     project_router as test_case_project_router,
 )
+from app.interfaces.http.openapi_importer_router import (
+    import_router as openapi_importer_router,
+)
 from app.interfaces.http.test_run_router import (
     case_router as test_run_case_router,
     result_router as test_run_result_router,
@@ -146,6 +149,7 @@ app.include_router(test_run_project_router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_run_resource_router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_run_result_router, prefix=settings.API_V1_PREFIX)
 app.include_router(test_run_case_router, prefix=settings.API_V1_PREFIX)
+app.include_router(openapi_importer_router, prefix=settings.API_V1_PREFIX)
 
 
 # Health check endpoint
