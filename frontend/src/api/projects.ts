@@ -18,13 +18,17 @@ export const projectsApi = {
     return response.data;
   },
 
-  async create(payload: ProjectPayload): Promise<Project> {
-    const response = await api.post<Project>("/projects", payload);
+  async create(payload: ProjectPayload, signal?: AbortSignal): Promise<Project> {
+    const response = await api.post<Project>("/projects", payload, { signal });
     return response.data;
   },
 
-  async update(projectId: string, payload: Partial<ProjectPayload>): Promise<Project> {
-    const response = await api.put<Project>(`/projects/${projectId}`, payload);
+  async update(
+    projectId: string,
+    payload: Partial<ProjectPayload>,
+    signal?: AbortSignal,
+  ): Promise<Project> {
+    const response = await api.put<Project>(`/projects/${projectId}`, payload, { signal });
     return response.data;
   },
 

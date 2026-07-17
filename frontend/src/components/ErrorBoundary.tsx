@@ -26,7 +26,6 @@ export default class ErrorBoundary extends Component<
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // 敏感上下文不写入控制台；生产环境可接入已批准的脱敏监控。
     if (typeof window !== "undefined" && import.meta.env?.DEV) {
-      // eslint-disable-next-line no-console
       console.error("[ErrorBoundary]", error, info);
     }
   }

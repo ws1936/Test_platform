@@ -21,7 +21,6 @@ import uuid
 import pytest
 
 
-pytestmark = pytest.mark.asyncio
 
 
 # === Helpers ===
@@ -429,3 +428,122 @@ async def test_delete_nonexistent_project_returns_404(client):
 async def test_delete_without_token_returns_401(client):
     resp = await client.delete(f"/api/v1/projects/{uuid.uuid4()}")
     assert resp.status_code == 401
+
+
+# === 6) P0 REGRESSION: token_version + is_active enforcement on create ===
+
+async def test_create_with_stale_token_version_returns_401(client, _db_admin):
+    """Stale access tokens (post password change / logout-everywhere) cannot create projects."""
+    user = await _register_user(client, username="henry", email="henry@example.com")
+    await _db_admin.bump_token_version(uuid.UUID(user["id"]))
+
+    resp = await client.post(
+        "/api/v1/projects",
+        json={"name": "HenryStale", "description": "stale"},
+        headers=_auth(user["token"]),
+    )
+    assert resp.status_code == 401
+    body = resp.json()
+    assert body["code"] == "TOKEN_INVALID"
+
+
+async def test_create_with_disabled_user_returns_403(client, _db_admin):
+    """A disabled user (status=0) cannot create projects."""
+    user = await _register_user(client, username="iris", email="iris@example.com")
+    await _db_admin.disable(uuid.UUID(user["id"]))
+
+    resp = await client.post(
+        "/api/v1/projects",
+        json={"name": "IrisProj", "description": "disabled"},
+        headers=_auth(user["token"]),
+    )
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body["code"] == "ACCOUNT_DISABLED"
+
+
+# === 7) P0 REGRESSION: project name conflict (30007 / 409) ===
+
+async def test_create_duplicate_project_name_returns_409(client):
+    """Creating two projects with the same name under the same owner should fail with 409."""
+    user = await _register_user(client, username="jack", email="jack@example.com")
+    first = await client.post(
+        "/api/v1/projects",
+        json={"name": "Duplicate", "description": "first"},
+        headers=_auth(user["token"]),
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/api/v1/projects",
+        json={"name": "Duplicate", "description": "second"},
+        headers=_auth(user["token"]),
+    )
+    assert second.status_code == 409
+    body = second.json()
+    assert body["code"] == "PROJECT_NAME_TAKEN"
+
+
+async def test_create_duplicate_name_across_users_is_allowed(client):
+    """Two different users can use the same project name (no global uniqueness)."""
+    alice = await _register_user(client, username="alice6", email="alice6@example.com")
+    bob = await _register_user(
+        client, username="bob6", email="bob6@example.com", admin_token=alice["token"]
+    )
+
+    a = await client.post(
+        "/api/v1/projects",
+        json={"name": "Shared", "description": "alice"},
+        headers=_auth(alice["token"]),
+    )
+    b = await client.post(
+        "/api/v1/projects",
+        json={"name": "Shared", "description": "bob"},
+        headers=_auth(bob["token"]),
+    )
+    assert a.status_code == 201
+    assert b.status_code == 201
+    assert a.json()["owner_id"] != b.json()["owner_id"]
+
+
+# === Internal helpers for back-office mutations (token / status) ===
+#
+# These helpers use the engine that the ``app`` fixture built (which has
+# the schema), not the production ``async_session_factory`` (which points
+# to a separate in-memory engine that no test ever wrote to).
+
+
+@pytest.fixture
+def _db_admin(app):  # noqa: ANN001 - test helper
+    """Yield a helper object bound to the test app's engine."""
+    from app.domain.user.service import UserService
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.domain.user.model import User
+
+    session_factory = async_sessionmaker(
+        app.state.db_engine, expire_on_commit=False
+    )
+
+    class _Admin:
+        def __init__(self) -> None:
+            self.session_factory = session_factory
+            self.User = User
+            self.UserService = UserService
+            self._select = select
+
+        async def bump_token_version(self, user_id: uuid.UUID) -> None:
+            async with self.session_factory() as session:
+                await self.UserService(session).bump_token_version(user_id)
+
+        async def disable(self, user_id: uuid.UUID) -> None:
+            async with self.session_factory() as session:
+                result = await session.execute(
+                    self._select(self.User).where(self.User.id == user_id)
+                )
+                db_user = result.scalar_one()
+                db_user.status = 0
+                await session.commit()
+
+    return _Admin()

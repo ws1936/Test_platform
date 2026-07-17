@@ -124,7 +124,11 @@ export default function ProjectsPage() {
         project={editing}
         onClose={() => setFormOpen(false)}
         onSaved={(project) => {
-          if (!editing) navigate(`/projects/${project.id}/overview`);
+          if (!editing) {
+            const next = new URLSearchParams();
+            next.set("justCreated", "1");
+            navigate(`/projects/${project.id}/workspace/overview?${next.toString()}`);
+          }
         }}
       />
     </>

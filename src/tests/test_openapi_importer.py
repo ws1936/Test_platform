@@ -8,7 +8,6 @@ from app.domain.openapi_importer.exceptions import (
 from app.domain.openapi_importer.parser import OpenApiSpecParser, ParsedSpec
 
 
-pytestmark = pytest.mark.asyncio
 
 
 SAMPLE_OPENAPI_3_0 = {

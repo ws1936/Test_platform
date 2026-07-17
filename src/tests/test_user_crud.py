@@ -3,7 +3,6 @@
 import pytest
 
 
-pytestmark = pytest.mark.asyncio
 
 
 async def _register_and_get_token(client, payload):

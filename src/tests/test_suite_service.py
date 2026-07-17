@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from app.domain.user.model import User
 
 
-pytestmark = pytest.mark.asyncio
 
 
 # === Fixtures local to this module ===

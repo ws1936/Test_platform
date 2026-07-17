@@ -25,7 +25,6 @@ import uuid
 import pytest
 
 
-pytestmark = pytest.mark.asyncio
 
 
 # === Helpers (mirror test_project_router.py's pattern) ===

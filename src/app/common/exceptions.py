@@ -210,6 +210,25 @@ class ProjectNotFoundException(NotFoundException):
         self.code = "PROJECT_NOT_FOUND"  # business code 30001
 
 
+# 30007 - project name already exists
+class ProjectNameConflictException(ConflictException):
+    """A project with the same name already exists for this owner.
+
+    Raised when a uniqueness constraint on ``(owner_id, name)`` is violated
+    (either by a database UNIQUE index or by an in-service pre-check).  The
+    business code mirrors the entry declared in ``ERROR_CODE.md`` so that
+    the frontend can map it onto a field-level "name conflict" experience.
+    """
+
+    def __init__(
+        self,
+        message: str = "Project name already exists",
+        details: Optional[dict] = None,
+    ):
+        super().__init__(message=message, details=details)
+        self.code = "PROJECT_NAME_TAKEN"  # business code 30007
+
+
 # 30002 - environment not found
 class EnvironmentNotFoundException(NotFoundException):
     """API testing environment does not exist."""

@@ -20,7 +20,6 @@ from typing import Any, Optional
 import pytest
 
 
-pytestmark = pytest.mark.asyncio
 
 
 # === Helpers ===============================================================

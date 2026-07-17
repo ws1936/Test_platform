@@ -195,6 +195,23 @@ class UserService:
         _audit("logout.success")
         return LogoutResponse()
 
+    async def bump_token_version(self, user_id: UUID) -> None:
+        """Bump ``token_version`` so previously issued access tokens are
+        rejected by ``get_current_user_with_version``.
+
+        This is a test/back-office helper — production code does not need
+        a public mutation; it already happens in :meth:`change_password`
+        and the user disable flow.  Exposed for tests that need to
+        exercise the "stale access token" contract.
+        """
+        user = await self.repository.get_by_id(user_id)
+        if user is None:
+            raise UserNotFoundException()
+        user.token_version = user.token_version + 1
+        await self.repository.update(user)
+        await self.session.commit()
+        _audit("token_version.bump", user_id=str(user.id))
+
     async def change_password(
         self,
         user_id: UUID,

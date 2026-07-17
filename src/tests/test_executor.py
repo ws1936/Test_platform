@@ -29,7 +29,6 @@ from app.domain.test_engine.executor import ApiExecutor
 from app.domain.test_engine.request_builder import BuiltRequest
 
 
-pytestmark = pytest.mark.asyncio
 
 
 def _req(

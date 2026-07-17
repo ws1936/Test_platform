@@ -137,6 +137,11 @@ async def app(db_engine):
             yield session
 
     test_app = FastAPI(title="Test App")
+    # Expose the engine so back-office test helpers (e.g. token_version
+    # bump) can connect to the same SQLite memory instance the request
+    # lifecycle is using.
+    test_app.state.db_engine = db_engine
+    test_app.state.db_session_factory = session_factory
 
     @test_app.exception_handler(RequestValidationError)
     async def _validation_handler(request, exc):

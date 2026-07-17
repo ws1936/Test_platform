@@ -113,11 +113,11 @@ export default function ProjectWorkspaceLayout({ children }: { children?: ReactN
     environmentsQuery.isLoading ||
     suitesQuery.isLoading ||
     casesQuery.isLoading;
-  const isError =
-    projectQueryDetail.isError ||
-    environmentsQuery.isError ||
-    suitesQuery.isError ||
-    casesQuery.isError;
+  // Only the project detail failure is fatal: the project is the
+  // workspace's identity. Sub-resource queries (env / suite / case / run)
+  // return empty data for a new project; their failures should be
+  // surfaced inline (P2) rather than blocking the entire layout.
+  const isError = projectQueryDetail.isError;
 
   const contextValue = useMemo<ProjectWorkspaceContextValue>(() => {
     const refresh = () => {

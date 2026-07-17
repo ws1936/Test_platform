@@ -20,9 +20,15 @@ import logging
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.exceptions import ForbiddenException, ProjectNotFoundException
+from app.common.exceptions import (
+    ForbiddenException,
+    ProjectNameConflictException,
+    ProjectNotFoundException,
+)
 from app.domain.project.model import ApiProject
 from app.domain.project.repository import ProjectRepository
 from app.domain.project.schema import (
@@ -68,14 +74,55 @@ class ProjectService:
         *,
         current_user: User,
     ) -> ProjectResponse:
-        """Create a new project owned by ``current_user``."""
+        """Create a new project owned by ``current_user``.
+
+        The business rules are:
+
+        * ``owner_id`` is always taken from the authenticated user context;
+          the request schema cannot forge it.
+        * The (owner_id, name) pair is unique per owner.  We perform a
+          best-effort pre-check (covers the common path) and rely on a
+          database UNIQUE constraint to close the race window.  The
+          ``IntegrityError`` is translated into
+          :class:`ProjectNameConflictException` so the frontend can
+          show a field-level conflict.
+        """
+        # Pre-check: turn the most common case into an immediate
+        # 409 without waiting for the database round-trip.
+        existing = await self.session.execute(
+            select(ApiProject.id).where(
+                ApiProject.owner_id == current_user.id,
+                ApiProject.name == request.name,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise ProjectNameConflictException(
+                message=f"Project name '{request.name}' already exists",
+                details={"name": request.name},
+            )
+
         project = ApiProject(
             name=request.name,
             description=request.description,
             owner_id=current_user.id,
         )
         project = await self.repository.create(project)
-        await self.session.commit()
+
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            # The pre-check above closes the common case; this branch
+            # covers the race window where another concurrent request
+            # committed the same (owner_id, name) pair.  Translating
+            # here means a UNIQUE constraint at the database level is
+            # the authoritative source of truth without leaking the
+            # underlying error to the client.
+            await self.session.rollback()
+            raise ProjectNameConflictException(
+                message=f"Project name '{request.name}' already exists",
+                details={"name": request.name},
+            ) from exc
+
         _audit("create", project_id=str(project.id), actor_id=str(current_user.id))
         return ProjectResponse.model_validate(project)
 

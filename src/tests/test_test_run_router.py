@@ -46,7 +46,6 @@ from app.domain.user.model import User
 from app.domain.user.repository import UserRepository
 
 
-pytestmark = pytest.mark.asyncio
 
 
 # === Test helpers ===========================================================

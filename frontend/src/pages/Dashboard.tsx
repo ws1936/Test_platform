@@ -368,7 +368,9 @@ export default function DashboardPage() {
         onClose={() => setCreateOpen(false)}
         onSaved={(project) => {
           setProject(project.id);
-          navigate(`/projects/${project.id}/overview`);
+          const next = new URLSearchParams();
+          next.set("justCreated", "1");
+          navigate(`/projects/${project.id}/workspace/overview?${next.toString()}`);
         }}
       />
     </>

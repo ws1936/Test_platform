@@ -3,7 +3,6 @@
 import pytest
 
 
-pytestmark = pytest.mark.asyncio
 
 
 async def test_register_first_user_success(client, user_payload):

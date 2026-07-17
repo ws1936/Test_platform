@@ -28,7 +28,6 @@ import pytest
 from sqlalchemy import select
 
 
-pytestmark = pytest.mark.asyncio
 
 
 # === Helpers (mirror test_suite_router.py's pattern) ===

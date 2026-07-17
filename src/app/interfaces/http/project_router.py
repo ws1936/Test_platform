@@ -16,7 +16,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.common.dependencies import get_current_user, get_project_service
+from app.common.dependencies import (
+    get_current_user,
+    get_current_user_with_version,
+    get_project_service,
+)
 from app.domain.project.schema import (
     ProjectCreateRequest,
     ProjectListQuery,
@@ -44,13 +48,18 @@ router = APIRouter(prefix="/projects", tags=["Project"])
     responses={
         201: {"description": "Project created"},
         401: {"description": "Not authenticated"},
+        403: {"description": "Account disabled"},
+        409: {"description": "Project name already exists"},
         422: {"description": "Validation error"},
     },
 )
 async def create_project(
     request: ProjectCreateRequest,
     project_service: ProjectService = Depends(get_project_service),
-    current_user: User = Depends(get_current_user),
+    # ``get_current_user_with_version`` enforces token_version + is_active so
+    # that password changes / account disablements actually revoke write
+    # access (Review TK-1).
+    current_user: User = Depends(get_current_user_with_version),
 ) -> ProjectResponse:
     return await project_service.create_project(
         request, current_user=current_user
@@ -77,7 +86,7 @@ async def list_projects(
     size: int = Query(default=20, ge=1, le=100, description="Items per page"),
     search: str | None = Query(default=None, description="按 name 模糊搜索"),
     project_service: ProjectService = Depends(get_project_service),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_with_version),
 ) -> ProjectListResponse:
     query = ProjectListQuery(page=page, size=size, search=search)
     return await project_service.list_projects(query, current_user=current_user)
@@ -102,7 +111,7 @@ async def list_projects(
 async def get_project(
     project_id: UUID,
     project_service: ProjectService = Depends(get_project_service),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_with_version),
 ) -> ProjectResponse:
     project = await project_service.get_project(
         project_id, current_user=current_user
@@ -131,7 +140,7 @@ async def update_project(
     project_id: UUID,
     request: ProjectUpdateRequest,
     project_service: ProjectService = Depends(get_project_service),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_with_version),
 ) -> ProjectResponse:
     return await project_service.update_project(
         project_id, request, current_user=current_user
@@ -157,7 +166,7 @@ async def update_project(
 async def delete_project(
     project_id: UUID,
     project_service: ProjectService = Depends(get_project_service),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_with_version),
 ) -> MessageResponse:
     await project_service.delete_project(project_id, current_user=current_user)
     return MessageResponse(message="Project deleted")

@@ -20,7 +20,6 @@ from typing import Any
 import pytest
 
 
-pytestmark = pytest.mark.asyncio
 
 
 # === Helpers (mirror test_environment_router.py's pattern) ===

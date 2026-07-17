@@ -103,3 +103,77 @@ export function getErrorMessage(error: unknown, fallback = "操作失败，请�
 export function getHttpStatus(error: unknown): number | undefined {
   return axios.isAxiosError(error) ? error.response?.status : undefined;
 }
+
+export interface ApiError {
+  code: string;
+  message: string;
+  status: number | undefined;
+  fields?: Record<string, string>;
+  raw: unknown;
+}
+
+/**
+ * Extract a structured {@link ApiError} from an unknown error.
+ *
+ * - Reads ``code`` / ``message`` / ``details`` from the backend
+ *   ``code/message/details`` envelope (our handlers emit this shape).
+ * - Maps the FastAPI-style ``detail`` array to ``fields`` for backward
+ *   compatibility so existing ``VALIDATION_ERROR`` 422 responses can
+ *   still be matched.
+ * - Returns a stable shape that the UI can switch on.
+ */
+export function getApiError(error: unknown): ApiError {
+  const fallback: ApiError = {
+    code: "UNKNOWN_ERROR",
+    message: "未知错误",
+    status: getHttpStatus(error),
+    raw: error,
+  };
+
+  if (!axios.isAxiosError(error)) {
+    if (error instanceof Error) {
+      return { ...fallback, message: error.message };
+    }
+    return fallback;
+  }
+
+  const status = error.response?.status;
+  const data = error.response?.data as
+    | {
+        code?: string;
+        message?: string;
+        details?: unknown;
+        detail?: unknown;
+      }
+    | undefined;
+
+  if (!data) {
+    return { ...fallback, status };
+  }
+
+  let fields: Record<string, string> | undefined;
+  if (Array.isArray(data.detail)) {
+    fields = {};
+    for (const item of data.detail) {
+      if (item && typeof item === "object" && "loc" in item) {
+        const loc = (item as { loc: unknown }).loc;
+        const field = Array.isArray(loc)
+          ? loc.filter((l) => l !== "body").join(".")
+          : "body";
+        const message =
+          (item as { msg?: string }).msg ?? "字段不合法";
+        fields[field] = message;
+      }
+    }
+  } else if (data.details && typeof data.details === "object") {
+    fields = data.details as Record<string, string>;
+  }
+
+  return {
+    code: data.code ?? fallback.code,
+    message: data.message ?? fallback.message,
+    status,
+    fields,
+    raw: error,
+  };
+}

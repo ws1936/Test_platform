@@ -1,7 +1,8 @@
 import { CheckCircleFilled, WarningFilled } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Card, Col, Empty, List, Progress, Row, Space, Tag, Typography } from "antd";
-import { useNavigate } from "react-router-dom";
+import { Alert, Button, Card, Col, Empty, List, Progress, Row, Space, Tag, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { queryKeys } from "../../api/queryKeys";
 import { runsApi } from "../../api/runs";
 import type { TestRun } from "../../api/types";
@@ -12,7 +13,22 @@ import { formatDateTime, formatDuration, formatPercent } from "../../utils/forma
 
 export default function WorkspaceOverview() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { projectId, project, readiness, refresh } = useProjectWorkspace();
+  const [showCreated, setShowCreated] = useState(false);
+  // ``?justCreated=1`` is appended by the create flow so the workspace
+  // gives explicit feedback when the user lands here after a successful
+  // create.  We strip it after acknowledging so the URL stays clean
+  // and a page refresh does not re-show the banner.
+  useEffect(() => {
+    if (searchParams.get("justCreated") === "1") {
+      setShowCreated(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("justCreated");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   const summaryQuery = useQuery({
     queryKey: queryKeys.projectRunSummary(projectId),
     queryFn: () => runsApi.projectSummary(projectId),
@@ -28,6 +44,22 @@ export default function WorkspaceOverview() {
 
   return (
     <Space direction="vertical" size={20} style={{ width: "100%" }}>
+      {showCreated && project ? (
+        <Alert
+          type="success"
+          showIcon
+          message={`项目 ${project.name} 创建成功`}
+          description="资产就绪：环境、默认环境、Suite、Case 都还是空的。下一步：配置默认环境。"
+          closable
+          onClose={() => setShowCreated(false)}
+          action={
+            <Button size="small" onClick={() => navigate("environment")}>
+              配置环境
+            </Button>
+          }
+        />
+      ) : null}
+
       <Card className="surface-card" title="项目摘要">
         {project ? (
           <Row gutter={[16, 16]}>
