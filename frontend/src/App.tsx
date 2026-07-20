@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import { AdminRoute, ProtectedRoute } from "./components/RouteGuards";
 import ProjectWorkspaceLayout from "./components/workspace/ProjectWorkspaceLayout";
@@ -17,6 +17,21 @@ import WorkspaceResultDetail from "./pages/workspace/WorkspaceResultDetail";
 import WorkspaceRun from "./pages/workspace/WorkspaceRun";
 import WorkspaceSuiteDetail from "./pages/workspace/WorkspaceSuiteDetail";
 import WorkspaceSuiteList from "./pages/workspace/WorkspaceSuiteList";
+
+/**
+ * Legacy-route redirects that need to know which project they were
+ * launched from. ``<Navigate to="workspace/environment">`` inside a
+ * ``projects/:projectId/environments`` route element resolves to
+ * ``.../environments/workspace/environment`` because React Router v6
+ * treats the relative path as being appended to the matched route's
+ * full pathname (not "replace the last segment"). We build the
+ * absolute target here so the user lands on the workspace view.
+ */
+function ProjectsRedirect({ to }: { to: string }) {
+  const params = useParams();
+  const projectId = params.projectId ?? "";
+  return <Navigate to={`/projects/${projectId}/workspace/${to}`} replace />;
+}
 
 const DashboardPage = lazy(() => import("./pages/Dashboard"));
 const ProjectsPage = lazy(() => import("./pages/Projects"));
@@ -39,21 +54,21 @@ export default function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="projects" element={<ProjectsPage />} />
 
-        <Route path="projects/:projectId" element={<Navigate to="workspace/overview" replace />} />
-        <Route path="projects/:projectId/overview" element={<Navigate to="workspace/overview" replace />} />
+        <Route path="projects/:projectId" element={<ProjectsRedirect to="overview" />} />
+        <Route path="projects/:projectId/overview" element={<ProjectsRedirect to="overview" />} />
 
-        <Route path="projects/:projectId/environments" element={<Navigate to="workspace/environment" replace />} />
-        <Route path="projects/:projectId/suites" element={<Navigate to="workspace/suite" replace />} />
-        <Route path="projects/:projectId/suites/:suiteId" element={<Navigate to={`workspace/suite/${undefined}`} replace />} />
+        <Route path="projects/:projectId/environments" element={<ProjectsRedirect to="environment" />} />
+        <Route path="projects/:projectId/suites" element={<ProjectsRedirect to="suite" />} />
+        <Route path="projects/:projectId/suites/:suiteId" element={<Navigate to="/projects/PLACEHOLDER/workspace/suite" replace />} />
         <Route
           path="projects/:projectId/suites/:suiteId/import/openapi"
           element={<Navigate to="../import" replace />}
         />
-        <Route path="projects/:projectId/cases" element={<Navigate to="workspace/case" replace />} />
-        <Route path="projects/:projectId/cases/new" element={<Navigate to="workspace/case/new" replace />} />
-        <Route path="projects/:projectId/cases/:caseId" element={<Navigate to="workspace/case" replace />} />
-        <Route path="projects/:projectId/runs" element={<Navigate to="workspace/run" replace />} />
-        <Route path="projects/:projectId/reports" element={<Navigate to="workspace/report" replace />} />
+        <Route path="projects/:projectId/cases" element={<ProjectsRedirect to="case" />} />
+        <Route path="projects/:projectId/cases/new" element={<ProjectsRedirect to="case" />} />
+        <Route path="projects/:projectId/cases/:caseId" element={<ProjectsRedirect to="case" />} />
+        <Route path="projects/:projectId/runs" element={<ProjectsRedirect to="run" />} />
+        <Route path="projects/:projectId/reports" element={<ProjectsRedirect to="report" />} />
         <Route
           path="projects/:projectId/reports/:runId"
           element={<Navigate to="../report" replace />}

@@ -45,7 +45,6 @@ export default function ProjectFormModal({
 
   const {
     control,
-    register,
     handleSubmit,
     reset,
     setError,
@@ -122,23 +121,29 @@ export default function ProjectFormModal({
   });
 
   // Reset form whenever the modal opens or the target project changes.
+  // NOTE: intentionally does NOT depend on `mutation` — TanStack Query v5
+  // returns a NEW mutation object every render (`return { ...result, mutate }`),
+  // which would otherwise re-fire this effect (and call `reset()`) on every
+  // keystroke, blowing away the user's input mid-typing.
   useEffect(() => {
     if (open) {
       reset({
         name: project?.name ?? "",
         description: project?.description ?? "",
       });
-    } else {
-      // Closing — drop the mutation state and abort any in-flight request
-      // so the next open is a clean slate.
-      mutation.reset();
-      abortRef.current?.abort();
-      abortRef.current = null;
     }
-  }, [open, project, reset, mutation]);
+    // Closing-side cleanup is handled in `close()` so we don't need
+    // `mutation` / `abortRef` here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, project, reset]);
 
   const close = () => {
     if (mutation.isPending) return;
+    // Drop the mutation state and abort any in-flight request so the
+    // next open is a clean slate.
+    mutation.reset();
+    abortRef.current?.abort();
+    abortRef.current = null;
     onClose();
   };
 
@@ -181,15 +186,23 @@ export default function ProjectFormModal({
           validateStatus={errors.name ? "error" : undefined}
           help={errors.name?.message ?? FIELD_MESSAGES.name}
         >
-          <Input
-            placeholder="例如：用户服务 API"
-            maxLength={100}
-            showCount
-            autoFocus
-            {...register("name", {
+          <Controller
+            control={control}
+            name="name"
+            rules={{
               required: "请输入项目名称",
               maxLength: { value: 100, message: "项目名称最多 100 字" },
-            })}
+            }}
+            render={({ field }) => (
+              <Input
+                {...field}
+                value={field.value ?? ""}
+                placeholder="例如：用户服务 API"
+                maxLength={100}
+                showCount
+                autoFocus
+              />
+            )}
           />
         </Form.Item>
         <Form.Item

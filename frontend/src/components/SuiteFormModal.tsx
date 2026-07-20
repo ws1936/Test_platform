@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Form, Input, Modal, Space } from "antd";
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { getErrorMessage } from "../api/client";
 import { suitesApi } from "../api/suites";
 import type { Suite, SuitePayload } from "../api/types";
@@ -16,11 +16,29 @@ interface SuiteFormModalProps {
 export default function SuiteFormModal({ open, projectId, suite, onClose }: SuiteFormModalProps) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<SuitePayload>();
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<SuitePayload>({
+    defaultValues: { name: "", description: "" },
+  });
 
+  // Reset form whenever the modal opens or the target suite changes.
+  // NOTE: do NOT add `mutation` to deps — TanStack Query v5 returns a NEW
+  // mutation object every render (`return { ...result, mutate }`), which
+  // would otherwise re-fire `reset()` on every keystroke and blow away
+  // the user's input mid-typing.
   useEffect(() => {
-    if (open) reset({ name: suite?.name ?? "", description: suite?.description ?? "" });
-  }, [open, reset, suite]);
+    if (open) {
+      reset({
+        name: suite?.name ?? "",
+        description: suite?.description ?? "",
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, suite, reset]);
 
   const mutation = useMutation({
     mutationFn: (payload: SuitePayload) =>
@@ -33,14 +51,52 @@ export default function SuiteFormModal({ open, projectId, suite, onClose }: Suit
     onError: (error) => message.error(getErrorMessage(error, "测试套件保存失败")),
   });
 
+  const submit = (values: SuitePayload) => {
+    mutation.mutate({
+      name: values.name.trim(),
+      description: values.description?.trim() ? values.description.trim() : null,
+    });
+  };
+
   return (
     <Modal title={suite ? "编辑测试套件" : "新建测试套件"} open={open} onCancel={onClose} footer={null} destroyOnClose>
-      <form onSubmit={handleSubmit((values) => mutation.mutate(values))}>
-        <Form.Item label="套件名称" validateStatus={errors.name ? "error" : undefined} help={errors.name?.message}>
-          <Input maxLength={100} showCount placeholder="例如：冒烟回归" {...register("name", { required: "请输入套件名称" })} />
+      <form onSubmit={handleSubmit(submit)} noValidate>
+        <Form.Item
+          label="套件名称"
+          validateStatus={errors.name ? "error" : undefined}
+          help={errors.name?.message}
+        >
+          <Controller
+            control={control}
+            name="name"
+            rules={{
+              required: "请输入套件名称",
+              maxLength: { value: 100, message: "套件名称最多 100 字" },
+            }}
+            render={({ field }) => (
+              <Input
+                {...field}
+                value={field.value ?? ""}
+                maxLength={100}
+                showCount
+                placeholder="例如：冒烟回归"
+              />
+            )}
+          />
         </Form.Item>
         <Form.Item label="描述">
-          <Input.TextArea rows={4} placeholder="说明该套件覆盖的业务范围" {...register("description")} />
+          <Controller
+            control={control}
+            name="description"
+            render={({ field }) => (
+              <Input.TextArea
+                {...field}
+                value={field.value ?? ""}
+                rows={4}
+                placeholder="说明该套件覆盖的业务范围"
+              />
+            )}
+          />
         </Form.Item>
         <Space className="modal-actions">
           <Button onClick={onClose} disabled={mutation.isPending}>取消</Button>
