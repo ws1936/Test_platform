@@ -71,6 +71,19 @@ MVP 完成时必须满足：
 - [ ] 用例支持断言配置。
 - [ ] 用例支持启用/禁用。
 
+### 4.4 OpenAPI 导入与批量生成（F012 + F013）
+
+- [ ] 可以从 OpenAPI 3.x 文档（URL 或 JSON 内容）预览生成基础 API 用例（F012 `dry_run=true`）。
+- [ ] 可以消费 `preview_id` 真创建用例，默认 `on_conflict=skip`，可选 `overwrite`。
+- [ ] 可以一次提交多份 OpenAPI 文档（F013 `?batch=true&documents[]`）并生成全部基础用例。
+- [ ] 单文档失败不影响其它文档正常落库（F013 失败隔离）。
+- [ ] 越过 `OPENAPI_BATCH_MAX_DOCS`（默认 5）或 `OPENAPI_BATCH_MAX_OPS_PER_DOC`（默认 50）返回业务码 `OPENAPI_BATCH_LIMIT_EXCEEDED`。
+- [ ] `documents[]` 与单文档字段同传返回 422，互斥校验在请求模型层生效。
+- [ ] 覆盖（`on_conflict=overwrite`）时旧用例历史 `TestResult` 保留可追溯，不级联删除。
+- [ ] 非项目 owner / admin 调用 → 403；项目/套件不存在 → 404；缺 token → 401。
+- [ ] 敏感头（`Authorization` / `Cookie` 等）在解析/落库过程中不被写入日志。
+- [ ] 零 DB 改动、零 Alembic migration、不动 model.py。
+
 ---
 
 ## 5. 执行验收

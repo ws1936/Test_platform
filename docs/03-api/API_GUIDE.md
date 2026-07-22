@@ -169,6 +169,36 @@
 - 鉴权：项目 owner 或 superuser。
 - 零新表；通过 `POST /collections/{suite_id}/cases` 写入 F007。
 
+#### 3.8.1 F013 批量模式（`?batch=true`）
+
+启用方式：
+
+```text
+POST /api/v1/projects/{project_id}/suites/{suite_id}/import/openapi?batch=true&dry_run=true
+```
+
+请求体：
+
+```json
+{
+  "documents": [
+    { "source_url": "https://example.com/a.json", "tags": ["pets"] },
+    { "source_content": { "openapi": "3.0.0", "paths": { }, "info": { "title": "b", "version": "1" } }, "name_prefix": "svc-b" }
+  ],
+  "on_conflict": "skip",
+  "name_prefix": null
+}
+```
+
+说明：
+- `documents[]` 与单文档字段（`source_url` / `source_content` / `tags` / `name_prefix`）**互斥**，同传返回 422。
+- 配额默认：`documents` 长度上限 `OPENAPI_BATCH_MAX_DOCS=5`，单文档 `operations` 上限 `OPENAPI_BATCH_MAX_OPS_PER_DOC=50`；越界返回业务码 `OPENAPI_BATCH_LIMIT_EXCEEDED`。
+- `?batch=false` 或省略 = F012 单文档语义，响应不变。
+- 两段式：`dry_run=true` 返回 `BatchImportPreviewResponse`；`dry_run=false&preview_id=...` 返回 `BatchImportResponse`（每文档一份 `created / skipped / overwritten / errors` 明细）。
+- 单文档失败仅在对应 `documents[i].errors` 增加项，不回滚其它文档。
+- 零 DB 改动；覆盖时旧用例历史 `TestResult` 保留可追溯。
+- 完整规则详见 `docs/01-product/F013_SPEC.md`。
+
 ### 3.9 执行与报告（F010 + F011 已实现）
 
 | 方法 | 路径 | 说明 | 认证 |

@@ -119,6 +119,105 @@ components:
           type: string
           format: uuid
           nullable: true
+    # ---- F012 + F013 ---------------------------------------------------------
+    OpenApiImportDocument:
+      type: object
+      description: F013 单个 OpenAPI 文档引用（request body of documents[] element）
+      properties:
+        source_url:
+          type: string
+          format: uri
+          description: OpenAPI 文档 URL（与 source_content 二选一）
+        source_content:
+          type: object
+          description: OpenAPI 文档原文（与 source_url 二选一）
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+          description: 可选，按 tag 过滤 operation
+        name_prefix:
+          type: string
+          maxLength: 80
+    OpenApiImportRequest:
+      type: object
+      description: F012/F013 OpenAPI 导入请求体。F013 批量通过 documents[] 字段启用；与单文档字段互斥。
+      properties:
+        source_url:
+          type: string
+          format: uri
+        source_content:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        on_conflict:
+          type: string
+          enum: [skip, overwrite]
+          default: skip
+        dry_run:
+          type: boolean
+          default: true
+        name_prefix:
+          type: string
+          maxLength: 80
+        documents:
+          type: array
+          description: F013 批量：1~5 个 OpenAPI 文档引用（上限配置项 OPENAPI_BATCH_MAX_DOCS）
+          items:
+            $ref: '#/components/schemas/OpenApiImportDocument'
+    BatchImportPreviewResponse:
+      type: object
+      description: F013 批量导入预览（dry_run=true）
+      properties:
+        suite_id: { type: string, format: uuid }
+        suite_name: { type: string }
+        total_documents: { type: integer }
+        total_operations: { type: integer }
+        documents:
+          type: array
+          items:
+            type: object
+            properties:
+              doc_index: { type: integer }
+              source: { type: string }
+              spec_version: { type: string }
+              base_path: { type: string }
+              total: { type: integer }
+              new_count: { type: integer }
+              existing_count: { type: integer }
+              skipped_count: { type: integer }
+              operations:
+                type: array
+                items: { type: object, additionalProperties: true }
+              errors:
+                type: array
+                items: { type: string }
+        errors:
+          type: array
+          items: { type: string }
+    BatchImportResponse:
+      type: object
+      description: F013 批量导入提交结果（dry_run=false&preview_id=...&batch=true）
+      properties:
+        total_documents: { type: integer }
+        total_attempted: { type: integer }
+        total_succeeded: { type: integer }
+        documents:
+          type: array
+          items:
+            type: object
+            properties:
+              doc_index: { type: integer }
+              source: { type: string }
+              created: { type: array, items: { type: string } }
+              skipped: { type: array, items: { type: string } }
+              overwritten: { type: array, items: { type: string } }
+              errors: { type: array, items: { type: string } }
+        errors:
+          type: array
+          items: { type: string }
 paths:
   /auth/login:
     post:
@@ -454,3 +553,59 @@ paths:
       responses:
         '200':
           description: 成功
+  # ---- F012 + F013 -----------------------------------------------------------
+  /projects/{project_id}/suites/{suite_id}/import/openapi:
+    post:
+      tags: [OpenAPI]
+      summary: F012 单文档 / F013 多文档批量 OpenAPI 导入（?batch=true 启用批量）
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: suite_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: batch
+          in: query
+          required: false
+          description: F013 批量开关；true=启用 documents[]，false=走 F012 单文档语义
+          schema: { type: boolean, default: false }
+        - name: dry_run
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+        - name: preview_id
+          in: query
+          required: false
+          description: dry_run=false 时需提供首次预览返回的 preview_id
+          schema: { type: string }
+        - name: on_conflict
+          in: query
+          required: false
+          schema: { type: string, enum: [skip, overwrite], default: skip }
+        - name: name_prefix
+          in: query
+          required: false
+          schema: { type: string, maxLength: 80 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenApiImportRequest'
+      responses:
+        '200':
+          description: 成功（F012 单文档：ImportPreviewResponse / ImportResponse；F013 批量：BatchImportPreviewResponse / BatchImportResponse）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '400':
+          description: 导入过程错误（含 OPENAPI_PARSE_ERROR / OPENAPI_FETCH_ERROR / OPENAPI_IMPORT_CONFLICT / OPENAPI_BATCH_LIMIT_EXCEEDED）
+        '401': { description: 未认证 }
+        '403': { description: 非项目 owner / admin }
+        '404': { description: 项目或套件不存在 }
+        '422':
+          description: 参数校验失败（含 documents[] 越界、URL scheme 非法、单文档字段与 documents[] 同传等）
