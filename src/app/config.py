@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     # asyncio capacity. Set to 1 to restore serial execution.
     TEST_RUN_MAX_CONCURRENCY: int = 4
 
+    # OpenAPI batch import (F013 批量生成基础用例)
+    # Maximum number of OpenAPI documents accepted in a single
+    # ``POST /projects/{pid}/suites/{sid}/import/openapi?batch=true`` call.
+    OPENAPI_BATCH_MAX_DOCS: int = 5
+    # Maximum number of operations parsed from a single document in
+    # a batch import. Beyond this limit the service raises
+    # ``OPENAPI_BATCH_LIMIT_EXCEEDED`` rather than silently truncating.
+    OPENAPI_BATCH_MAX_OPS_PER_DOC: int = 50
+
 
 @lru_cache
 def get_settings() -> Settings:
