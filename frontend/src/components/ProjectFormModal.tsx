@@ -134,7 +134,7 @@ export default function ProjectFormModal({
     }
     // Closing-side cleanup is handled in `close()` so we don't need
     // `mutation` / `abortRef` here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // (eslint-disable removed: was unused)
   }, [open, project, reset]);
 
   const close = () => {

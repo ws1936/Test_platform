@@ -37,7 +37,7 @@ export default function SuiteFormModal({ open, projectId, suite, onClose }: Suit
         description: suite?.description ?? "",
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // (eslint-disable removed: was unused)
   }, [open, suite, reset]);
 
   const mutation = useMutation({

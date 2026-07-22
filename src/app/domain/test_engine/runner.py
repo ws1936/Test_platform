@@ -34,6 +34,7 @@ and AI_RULES §8 ("API 测试结果必须保存请求、响应和断言快照").
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
@@ -41,6 +42,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.domain.environment.model import ApiEnvironment
 from app.domain.suite.model import ApiSuiteCase
 from app.domain.test_case.model import ApiTestCase
@@ -104,11 +106,20 @@ class TestRunner:
         session: AsyncSession,
         *,
         executor: Optional[ApiExecutor] = None,
+        max_concurrency: Optional[int] = None,
     ) -> None:
         self.session = session
         self.run_repo = TestRunRepository(session)
         self.result_repo = TestResultRepository(session)
         self.executor = executor or ApiExecutor()
+        # F014 有限并发：默认从 settings 读取；显式传 1 即恢复串行。
+        # 任何非法值（< 1）都回落到 1，避免误用。
+        raw = max_concurrency if max_concurrency is not None else settings.TEST_RUN_MAX_CONCURRENCY
+        self._max_concurrency = max(1, int(raw))
+        # SQLAlchemy AsyncSession 不能并发 flush/commit；F014 让多个
+        # case 的 HTTP 请求并发，但所有 session 操作（add/get/flush/
+        # commit）必须由这把锁串行化。HTTP 请求本身在锁外，仍能并行。
+        self._db_lock = asyncio.Lock()
 
     async def execute_run(
         self,
@@ -129,21 +140,52 @@ class TestRunner:
         run.status = "running"
         run.started_at = run.started_at or datetime.now(timezone.utc)
         run.total = len(case_ids)
-        await self.run_repo.update(run)
-        await self.session.commit()
+        async with self._db_lock:
+            await self.run_repo.update(run)
+            await self.session.commit()
+
+        # F014 有限并发：用 Semaphore 控制同时在飞的 _execute_single。
+        # Semaphore(1) 等价于原串行行为，Semaphore(N) 最多允许 N 个并发。
+        semaphore = asyncio.Semaphore(self._max_concurrency)
+
+        async def _bounded(case_id: UUID) -> Optional[ApiTestResult]:
+            """Acquire the semaphore, then run a single case.
+
+            Returns ``None`` for the "case disappeared" path so the
+            caller can skip counting it. Catches every exception so a
+            single bad case never aborts the whole gather().
+            """
+            async with semaphore:
+                # 读取 case 也需要 DB 锁（AsyncSession 不能并发访问）
+                async with self._db_lock:
+                    case = await self.session.get(ApiTestCase, case_id)
+                if case is None:
+                    # Case was deleted between run creation and execution —
+                    # skip silently and let ``skipped`` absorb the slot.
+                    logger.warning(
+                        "TestRunner: case %s disappeared mid-run", case_id
+                    )
+                    return None
+                try:
+                    return await self._execute_single(run=run, env=env, case=case)
+                except Exception:  # pragma: no cover - defensive net
+                    # ``_execute_single`` is expected to never raise; this
+                    # catch exists so a regression in the engine doesn't
+                    # poison the whole run.
+                    logger.exception(
+                        "TestRunner: unexpected error on case %s", case_id
+                    )
+                    return None
+
+        results = await asyncio.gather(
+            *(_bounded(case_id) for case_id in case_ids)
+        )
 
         passed = failed = error = 0
-
-        for case_id in case_ids:
-            case = await self.session.get(ApiTestCase, case_id)
-            if case is None:
-                # Case was deleted between run creation and execution —
-                # skip silently and let ``skipped`` absorb the slot.
-                logger.warning(
-                    "TestRunner: case %s disappeared mid-run", case_id
-                )
+        for result in results:
+            if result is None:
+                # 已被跳过的消失 case
                 continue
-            result = await self._execute_single(run=run, env=env, case=case)
             if result.status == "passed":
                 passed += 1
             elif result.status == "failed":
@@ -158,8 +200,9 @@ class TestRunner:
         run.skipped = run.total - passed - failed - error
         run.status = "finished"
         run.finished_at = datetime.now(timezone.utc)
-        await self.run_repo.update(run)
-        await self.session.commit()
+        async with self._db_lock:
+            await self.run_repo.update(run)
+            await self.session.commit()
         logger.info(
             "TestRunner: run %s finished — total=%d passed=%d failed=%d "
             "error=%d skipped=%d",
@@ -191,6 +234,9 @@ class TestRunner:
         audit trail.
         """
         started_at = datetime.now(timezone.utc)
+        # 注意：不在这里 add(result)！等所有字段都 set 好之后再 add，
+        # 避免被其他 case 的 query 触发的 autoflush 提前写入半成品
+        # (status="error") 到 DB。result_repo.create() 内部会做 add+flush。
         result = ApiTestResult(
             id=uuid4(),
             run_id=run.id,
@@ -199,7 +245,7 @@ class TestRunner:
             case_method=case.method,
             case_path=case.path,
             environment_id=env.id,
-            status="error",  # optimistic default; flipped below
+            status="pending",  # placeholder，create 之前一定会被覆盖
             started_at=started_at,
         )
 
@@ -258,8 +304,9 @@ class TestRunner:
                 variables_used=variables,
             )
             result.finished_at = datetime.now(timezone.utc)
-            await self.result_repo.create(result)
-            await self.session.commit()
+            async with self._db_lock:
+                await self.result_repo.create(result)
+                await self.session.commit()
             logger.exception(
                 "TestRunner: request build failed for case %s", case.id
             )
@@ -308,8 +355,9 @@ class TestRunner:
             _assertion_to_dict(r) for r in assertion_results
         ]
         result.finished_at = datetime.now(timezone.utc)
-        await self.result_repo.create(result)
-        await self.session.commit()
+        async with self._db_lock:
+            await self.result_repo.create(result)
+            await self.session.commit()
         return result
 
     async def _persist_error(
@@ -332,8 +380,9 @@ class TestRunner:
         result.assertions_snapshot = None
         result.elapsed_ms = None
         result.finished_at = datetime.now(timezone.utc)
-        await self.result_repo.create(result)
-        await self.session.commit()
+        async with self._db_lock:
+            await self.result_repo.create(result)
+            await self.session.commit()
         return result
 
 

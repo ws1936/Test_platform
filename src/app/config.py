@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = 60
     LOGIN_LOCKOUT_SECONDS: int = 300
 
+    # Test execution (F014 有限并发)
+    # Maximum number of cases the TestRunner will execute in parallel
+    # for a single Run. Capped server-side by the test environment's
+    # asyncio capacity. Set to 1 to restore serial execution.
+    TEST_RUN_MAX_CONCURRENCY: int = 4
+
 
 @lru_cache
 def get_settings() -> Settings:

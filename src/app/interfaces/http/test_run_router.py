@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.common.dependencies import get_current_user, get_test_run_service
 from app.domain.test_run.schema import (
@@ -221,6 +221,46 @@ async def summarize_run(
     return await test_run_service.summarize_run(
         run_id, current_user=current_user
     )
+
+
+@run_resource_router.get(
+    "/{run_id}/export",
+    summary="Export a run report (F015)",
+    description=(
+        "F015：导出单次 Run 的完整报告。支持两种格式：``json``（默认）"
+        "和 ``html``（自带简易模板，无需 jinja2）。响应体是纯文本，"
+        "前端可直接下载。"
+    ),
+    responses={
+        200: {"description": "Exported report (Content-Type 视 format 而定)"},
+        400: {"description": "Invalid format"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Not owner / not admin"},
+        404: {"description": "Run not found"},
+    },
+)
+async def export_run(
+    run_id: UUID,
+    format: str = Query(
+        default="json",
+        pattern="^(json|html)$",
+        description="导出格式：json 或 html",
+    ),
+    test_run_service: TestRunService = Depends(get_test_run_service),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    content, media_type, filename = await test_run_service.export_run(
+        run_id, format, current_user=current_user
+    )
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
 
 
 @run_resource_router.get(

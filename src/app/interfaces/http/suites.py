@@ -159,8 +159,6 @@ async def bulk_add_suite_cases(
 
 
 @router.put("/{suite_id}/cases/order", response_model=list[SuiteCaseResponse])
-@router.put("/{suite_id}/cases/reorder", response_model=list[SuiteCaseResponse])
-@router.patch("/{suite_id}/cases/order", response_model=list[SuiteCaseResponse])
 async def reorder_suite_cases(
     project_id: UUID,
     suite_id: UUID,

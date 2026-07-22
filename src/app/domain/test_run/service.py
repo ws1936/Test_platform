@@ -68,6 +68,8 @@ from app.domain.test_run.schema import (
     TestRunResponse,
     TestRunSummaryResponse,
 )
+from app.domain.test_run.exporter import export_run as _export_run_impl
+
 from app.domain.user.model import User
 
 
@@ -511,6 +513,29 @@ class TestRunService:
             recent_runs=recent_summaries,
             recent_limit=recent_limit,
         )
+
+    async def export_run(
+        self,
+        run_id: UUID,
+        format: str,
+        *,
+        current_user: User,
+    ):
+        """F015 报告导出：委托给 exporter 模块。
+
+        Returns:
+            (content, media_type, filename)
+        """
+        if format not in ("json", "html"):
+            from app.common.exceptions import BadRequestException
+
+            raise BadRequestException(
+                f"format must be 'json' or 'html', got {format!r}"
+            )
+        # 复用 _load_run_orm 鉴权 + 加载
+        run = await self._load_run_orm(run_id, current_user=current_user)
+        results = await self.result_repo.list_by_run(run.id)
+        return _export_run_impl(run, results, format)
 
     async def list_run_failures(
         self,
