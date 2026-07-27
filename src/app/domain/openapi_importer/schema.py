@@ -120,6 +120,9 @@ class OperationPreview(BaseModel):
 
 
 class ImportPreviewResponse(BaseModel):
+    preview_id: str = Field(
+        description="Token required by the subsequent dry_run=false commit"
+    )
     spec_version: str
     suite_id: UUID
     suite_name: str

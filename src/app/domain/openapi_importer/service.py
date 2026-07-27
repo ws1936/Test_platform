@@ -101,6 +101,7 @@ class OpenApiImportService:
             for op in parsed.operations
         ]
         return ImportPreviewResponse(
+            preview_id=preview_id,
             spec_version=parsed.version,
             suite_id=suite_id,
             suite_name="",

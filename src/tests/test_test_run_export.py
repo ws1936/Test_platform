@@ -81,7 +81,7 @@ def _make_result(status="passed", elapsed_ms=42, error_message=None):
 
 
 def test_esc_basic():
-    assert esc("a&b<c>d\"e") == "a&b<c>d\"e"  # entities substituted
+    assert esc('a&b<c>d"e') == 'a&amp;b&lt;c&gt;d&quot;e'
     assert esc(None) == ""
     assert esc(123) == "123"
 
@@ -134,13 +134,13 @@ def test_render_html_escapes_user_input():
     })()
     payload = build_payload(run, [evil])
     html = render_html(payload)
-    # Raw "<script>" should NOT appear; escaped version should
+    # Raw user-controlled markup should not appear; escaped text should.
     assert "<script>alert" not in html
-    assert "<script>alert" in html
-    assert ""xss"" in html
-    assert "a & b" in html
-    # angle bracket in path escaped
-    assert "/api/<x>" in html
+    assert "&lt;script&gt;alert" in html
+    assert "&quot;xss&quot;" in html
+    assert "a &amp; b" in html
+    # Angle brackets in the path are escaped as text.
+    assert "/api/&lt;x&gt;" in html
 
 
 def test_exporter_export_run_returns_correct_triple_for_html():

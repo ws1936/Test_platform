@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import JSON, DateTime, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,7 +36,7 @@ class Role(Base):
     )
     # JSONB is preferred on PostgreSQL; falls back to JSON on SQLite for tests
     permissions: Mapped[Optional[list]] = mapped_column(
-        JSONB().with_variant(String(), "sqlite"),
+        JSONB().with_variant(JSON(), "sqlite"),
         nullable=True,
     )
     is_system: Mapped[bool] = mapped_column(

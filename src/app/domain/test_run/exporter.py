@@ -8,11 +8,12 @@ import json as _json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
-# HTML 实体：直接用 chr() 拼接，避免源码被 strip 工具误解
-_AMP = chr(38) + "amp" + ";"
-_LT = chr(60) + "lt" + ";"
-_GT = chr(62) + "gt" + ";"
-_QUOT = chr(34) + "quot" + ";"
+# HTML entities. The entity itself starts with ``&``; using ``chr(38)``
+# keeps the literals unambiguous while producing standards-compliant output.
+_AMP = chr(38) + "amp;"
+_LT = chr(38) + "lt;"
+_GT = chr(38) + "gt;"
+_QUOT = chr(38) + "quot;"
 _MID = chr(183)  # ·
 _ARR = chr(8594)  # →
 

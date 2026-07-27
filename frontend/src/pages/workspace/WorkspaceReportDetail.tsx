@@ -128,7 +128,9 @@ export default function WorkspaceReportDetailPage() {
               type="primary"
               icon={<PlayCircleOutlined />}
               onClick={() =>
-                navigate(`../run?scope=${run.scope}&scopeId=${run.id}`)
+                navigate(
+                  `../run?scope=${run.scope}&scopeId=${run.scope_id ?? run.project_id}`,
+                )
               }
             >
               再次执行

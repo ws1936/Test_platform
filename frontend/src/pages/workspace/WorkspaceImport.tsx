@@ -129,9 +129,7 @@ export default function WorkspaceImportPage() {
     },
     onSuccess: (data) => {
       setPreview(data);
-      // backend 在 import_router.py / service._preview_cache 用 uuid4().hex 当作 previewId；
-      // API 响应没回传该 id，所以这里用一个简化的本地标识（命中 cache 即可）
-      setPreviewId(data.preview_id ?? "auto");
+      setPreviewId(data.preview_id);
       message.success(`预览完成：共 ${data.total} 条 operation`);
     },
     onError: (error) => {

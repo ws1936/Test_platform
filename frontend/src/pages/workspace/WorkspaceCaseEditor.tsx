@@ -149,9 +149,11 @@ export default function WorkspaceCaseEditor() {
   // ===== 提交 =====
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // 校验 suite
-      const targetSuiteId = isEdit ? initialSuiteId ?? "" : suiteId;
-      if (!targetSuiteId) {
+      // Suite is required only when creating a case. Existing cases are
+      // project assets and are updated through /test-cases/{id}; their Suite
+      // associations are managed independently by the Suite APIs.
+      const targetSuiteId = suiteId;
+      if (!isEdit && !targetSuiteId) {
         throw new Error("请选择 Suite");
       }
 
@@ -201,14 +203,16 @@ export default function WorkspaceCaseEditor() {
       if (isEdit && caseId) {
         return testCasesApi.update(caseId, payload);
       }
-      return testCasesApi.create(targetSuiteId, payload);
+      return testCasesApi.create(targetSuiteId as string, payload);
     },
     onSuccess: (saved: TestCase) => {
       message.success(isEdit ? "Case 已更新" : "Case 已创建");
       void queryClient.invalidateQueries({ queryKey: queryKeys.cases(projectId, "") });
       void queryClient.invalidateQueries({ queryKey: queryKeys.testCase(saved.id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.suites(projectId, "") });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.suiteCases(saved.id) });
+      // A Case can be linked to multiple Suites; invalidate the whole Suite
+      // case-link family instead of using the saved Case ID as a Suite ID.
+      void queryClient.invalidateQueries({ queryKey: ["suites"] });
       refreshWorkspace();
       const next = new URLSearchParams();
       next.set("justCreated", "1");

@@ -181,6 +181,7 @@ export interface TestRun {
   environment_id: UUID;
   name: string;
   scope: RunScope;
+  scope_id: UUID | null;
   status: RunStatus;
   total: number;
   passed: number;
@@ -212,6 +213,7 @@ export interface RunSummary {
   run_id: UUID;
   name: string;
   scope: RunScope;
+  scope_id: UUID | null;
   status: RunStatus;
   total: number;
   passed: number;
@@ -297,7 +299,7 @@ export interface OperationPreview {
 }
 
 export interface ImportPreview {
-  preview_id?: string;
+  preview_id: string;
   spec_version: string;
   suite_id: UUID;
   suite_name: string;

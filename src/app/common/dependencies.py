@@ -130,12 +130,24 @@ async def get_current_user_id(
 
 
 async def get_current_user(
-    user_id: UUID = Depends(get_current_user_id),
+    access_token: str = Depends(get_access_token),
     user_service: UserService = Depends(get_user_service),
 ) -> User:
+    """Resolve the authenticated user and enforce revocation globally.
+
+    Every protected business endpoint uses this dependency.  Keeping the
+    token-version and account-status checks here prevents stale tokens from
+    retaining access to environments, suites, cases, runs, reports or roles
+    after a password change or account disablement.
+    """
+    user_id, token_version = await _decode_user_id_from_token(access_token)
     user = await user_service.get_user_by_id(user_id)
     if user is None:
         raise TokenInvalidException("User no longer exists")
+    if token_version != user.token_version:
+        raise TokenInvalidException("Token has been revoked")
+    if not user.is_active:
+        raise AccountDisabledException()
     return user
 
 
@@ -143,17 +155,17 @@ async def get_current_user_with_version(
     access_token: str = Depends(get_access_token),
     user_service: UserService = Depends(get_user_service),
 ) -> User:
+    # Backward-compatible alias retained for routers that explicitly name the
+    # stronger dependency.  The canonical implementation now lives in
+    # ``get_current_user`` so no protected route can accidentally bypass it.
     user_id, token_version = await _decode_user_id_from_token(access_token)
     user = await user_service.get_user_by_id(user_id)
     if user is None:
         raise TokenInvalidException("User no longer exists")
-
     if token_version != user.token_version:
         raise TokenInvalidException("Token has been revoked")
-
     if not user.is_active:
         raise AccountDisabledException()
-
     return user
 
 

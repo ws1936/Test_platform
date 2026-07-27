@@ -92,6 +92,7 @@ class TestRunResponse(BaseModel):
     environment_id: UUID
     name: str
     scope: str
+    scope_id: Optional[UUID] = None
     status: str
     total: int
     passed: int
@@ -169,6 +170,7 @@ class TestRunSummaryResponse(BaseModel):
     run_id: UUID
     name: str
     scope: str
+    scope_id: Optional[UUID] = None
     status: str
     total: int
     passed: int

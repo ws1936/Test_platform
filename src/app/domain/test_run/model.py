@@ -52,6 +52,7 @@ class ApiTestRun(Base):
     __table_args__ = (
         Index("idx_api_test_runs_project_id", "project_id"),
         Index("idx_api_test_runs_environment_id", "environment_id"),
+        Index("idx_api_test_runs_scope_id", "scope_id"),
         Index("idx_api_test_runs_status", "status"),
     )
 
@@ -66,6 +67,9 @@ class ApiTestRun(Base):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     scope: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Original Case/Suite/Project target. Nullable only for legacy rows that
+    # predate migration 0008 and cannot be reconstructed safely.
+    scope_id: Mapped[Optional[UUID]] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
     )

@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 
 from app.common.dependencies import (
+    get_current_superuser,
     get_current_user,
     get_role_service,
 )
@@ -44,7 +45,7 @@ async def list_roles(
 async def create_role(
     request: RoleCreateRequest,
     role_service: RoleService = Depends(get_role_service),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_superuser),
 ) -> RoleResponse:
     try:
         role = await role_service.create_role(request)
@@ -80,7 +81,7 @@ async def update_role(
     role_id: UUID,
     request: RoleUpdateRequest,
     role_service: RoleService = Depends(get_role_service),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_superuser),
 ) -> RoleResponse:
     try:
         role = await role_service.update_role(role_id, request)
@@ -97,7 +98,7 @@ async def update_role(
 async def delete_role(
     role_id: UUID,
     role_service: RoleService = Depends(get_role_service),
-    _: User = Depends(get_current_user),
+    _: User = Depends(get_current_superuser),
 ) -> None:
     try:
         await role_service.delete_role(role_id)

@@ -198,7 +198,23 @@ class TestRunService:
                 raise BadRequestException(
                     "Suite has no attached test cases"
                 )
-            return suite_case_ids
+            # A disabled case must never execute, regardless of whether the
+            # scope is case, project or collection. Preserve the Suite-defined
+            # ordering while filtering the linked rows.
+            case_rows = (
+                await self.session.execute(
+                    select(ApiTestCase.id, ApiTestCase.status).where(
+                        ApiTestCase.id.in_(suite_case_ids)
+                    )
+                )
+            ).all()
+            enabled_ids = {row.id for row in case_rows if row.status == 1}
+            filtered_ids = [case_id for case_id in suite_case_ids if case_id in enabled_ids]
+            if not filtered_ids:
+                raise BadRequestException(
+                    "Suite has no enabled test cases"
+                )
+            return filtered_ids
 
         if scope == "project":
             items, _ = await self.case_repo.list_by_project(
@@ -255,6 +271,7 @@ class TestRunService:
             environment_id=env.id,
             name=self._generate_name(request.name),
             scope=request.scope,
+            scope_id=(project_id if request.scope == "project" else request.scope_id),
             status="pending",
             triggered_by=current_user.id,
             total=len(case_ids),
@@ -299,6 +316,7 @@ class TestRunService:
             environment_id=env.id,
             name=generated,
             scope="case",
+            scope_id=case.id,
             status="pending",
             triggered_by=current_user.id,
             total=1,
@@ -401,6 +419,7 @@ class TestRunService:
             run_id=run.id,
             name=run.name,
             scope=run.scope,
+            scope_id=run.scope_id,
             status=run.status,
             total=run.total,
             passed=run.passed,
@@ -471,6 +490,7 @@ class TestRunService:
                 run_id=run.id,
                 name=run.name,
                 scope=run.scope,
+                scope_id=run.scope_id,
                 status=run.status,
                 total=run.total,
                 passed=run.passed,
