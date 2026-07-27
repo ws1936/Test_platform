@@ -445,6 +445,7 @@ function PreviewPanel({ preview, previewId, onConflict }: PreviewPanelProps) {
                 size="small"
                 rowKey={(row, idx) => `${row.method}-${row.path}-${idx}`}
                 dataSource={preview.operations}
+                scroll={{ x: "max-content" }}
                 pagination={{ pageSize: 10, size: "small" }}
                 columns={[
                   {

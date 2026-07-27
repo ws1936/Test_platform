@@ -42,6 +42,7 @@ export default function RolesPage() {
           <Table<Role>
             rowKey="id"
             loading={rolesQuery.isLoading}
+            scroll={{ x: "max-content" }}
             dataSource={rolesQuery.data ?? []}
             pagination={false}
             locale={{ emptyText: <EmptyState title="暂无角色" action={<Button type="primary" onClick={openCreate}>新建角色</Button>} /> }}

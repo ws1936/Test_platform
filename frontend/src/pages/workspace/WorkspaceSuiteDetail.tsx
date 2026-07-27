@@ -23,7 +23,6 @@ import {
   Switch,
   Table,
   Tabs,
-  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -33,7 +32,7 @@ import { getErrorMessage } from "../../api/client";
 import { suitesApi } from "../../api/suites";
 import { testCasesApi } from "../../api/testCases";
 import { queryKeys } from "../../api/queryKeys";
-import type { SuiteCaseLink, TestCase } from "../../api/types";
+import type { TestCase } from "../../api/types";
 import { ErrorState, LoadingBlock } from "../../components/AsyncState";
 import PageHeader from "../../components/PageHeader";
 import { MethodTag } from "../../components/StatusTags";
@@ -43,6 +42,16 @@ import { formatDateTime } from "../../utils/format";
 
 const { Text } = Typography;
 
+/**
+ * Project Workspace · Suite Detail
+ *
+ * F012/F013 root-cause fix (2026-07): ``GET /collections/{suite_id}/cases``
+ * returns ``list[TestCaseResponse]`` already sorted by ``api_suite_cases.order``,
+ * so this page interprets the data as ``TestCase[]`` directly. The previous
+ * ``SuiteCaseLink[]`` cast made ``row.test_case_id`` / ``item.case_id``
+ * resolve to ``undefined`` and produced the literal string "undefined" in
+ * URLs / Case names. See commit message for the full chain.
+ */
 export default function WorkspaceSuiteDetailPage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
@@ -58,31 +67,28 @@ export default function WorkspaceSuiteDetailPage() {
     queryFn: () => suitesApi.get(projectId, suiteId),
     enabled: Boolean(projectId && suiteId),
   });
+  // The suite-scoped list returns ``list[TestCaseResponse]`` already in the
+  // Suite's own order (sorted by ``api_suite_cases.order``), so we can use it
+  // directly without a secondary ``caseMap`` projection.
   const suiteCasesQuery = useQuery({
     queryKey: queryKeys.suiteCases(suiteId),
     queryFn: () => suitesApi.listCases(suiteId),
     enabled: Boolean(suiteId),
   });
+  // Project-scoped list is only needed by the "add Cases" modal, so we
+  // lazy-fetch it on demand to keep the suite detail page cheap.
   const projectCasesQuery = useQuery({
     queryKey: queryKeys.cases(projectId, ""),
     queryFn: () => testCasesApi.listProject(projectId),
     enabled: Boolean(projectId && addOpen),
   });
 
-  const caseMap = useMemo(() => {
-    const map = new Map<string, TestCase>();
-    projectCasesQuery.data?.items.forEach((item) => map.set(item.id, item));
-    return map;
-  }, [projectCasesQuery.data?.items]);
+  const linked: TestCase[] =
+    (suiteCasesQuery.data as TestCase[] | undefined) ?? [];
 
   const linkedCaseIds = useMemo(
-    () =>
-      new Set(
-        ((suiteCasesQuery.data as SuiteCaseLink[] | undefined) ?? []).map(
-          (item) => item.case_id,
-        ),
-      ),
-    [suiteCasesQuery.data],
+    () => new Set(linked.map((item) => item.id)),
+    [linked],
   );
   const availableCases = useMemo(
     () => (projectCasesQuery.data?.items ?? []).filter((item) => !linkedCaseIds.has(item.id)),
@@ -132,12 +138,11 @@ export default function WorkspaceSuiteDetailPage() {
   });
 
   const suite = suiteQuery.data ?? null;
-  const linked: SuiteCaseLink[] = (suiteCasesQuery.data as SuiteCaseLink[] | undefined) ?? [];
 
   const moveCase = (index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= linked.length) return;
-    const ids = linked.map((item) => item.case_id);
+    const ids = linked.map((item) => item.id);
     [ids[index], ids[target]] = [ids[target], ids[index]];
     reorderMutation.mutate(ids);
   };
@@ -207,10 +212,7 @@ export default function WorkspaceSuiteDetailPage() {
               label: "已关联 Case",
               children: (
                 <SuiteCaseList
-                  projectId={projectId}
-                  suiteId={suiteId}
                   linked={linked}
-                  caseMap={caseMap}
                   loading={suiteCasesQuery.isLoading || reorderMutation.isPending}
                   error={suiteCasesQuery.isError ? suiteCasesQuery.error : undefined}
                   onAdd={() => {
@@ -223,6 +225,12 @@ export default function WorkspaceSuiteDetailPage() {
                   onRetry={() => void suiteCasesQuery.refetch()}
                   navigateToCase={(caseId) =>
                     navigate(`/projects/${projectId}/workspace/case/${caseId}?from=suite&suiteId=${suiteId}`)
+                  }
+                  goNewCase={() =>
+                    navigate(`/projects/${projectId}/workspace/case/new?suiteId=${suiteId}`)
+                  }
+                  goImport={() =>
+                    navigate(`/projects/${projectId}/workspace/import/${suiteId}`)
                   }
                 />
               ),
@@ -319,10 +327,7 @@ export default function WorkspaceSuiteDetailPage() {
   );
 
   interface SuiteCaseListProps {
-    projectId: string;
-    suiteId: string;
-    linked: SuiteCaseLink[];
-    caseMap: Map<string, TestCase>;
+    linked: TestCase[];
     loading: boolean;
     error: unknown;
     onAdd: () => void;
@@ -331,10 +336,11 @@ export default function WorkspaceSuiteDetailPage() {
     removingId: string | null;
     onRetry: () => void;
     navigateToCase: (caseId: string) => void;
+    goNewCase: () => void;
+    goImport: () => void;
   }
   function SuiteCaseList({
     linked,
-    caseMap,
     loading,
     error,
     onAdd,
@@ -343,6 +349,8 @@ export default function WorkspaceSuiteDetailPage() {
     removingId,
     onRetry,
     navigateToCase,
+    goNewCase,
+    goImport,
   }: SuiteCaseListProps) {
     return (
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -356,7 +364,7 @@ export default function WorkspaceSuiteDetailPage() {
           </Button>
           <Button
             icon={<PlusOutlined />}
-            onClick={() => navigate(`/projects/${projectId}/workspace/case/new?suiteId=${suiteId}`)}
+            onClick={goNewCase}
           >
             新建 Case
           </Button>
@@ -372,7 +380,7 @@ export default function WorkspaceSuiteDetailPage() {
                 <Text type="secondary">可批量添加项目已有 Case，或新建 / 导入 Case。</Text>
                 <Space>
                   <Button onClick={onAdd} type="primary">添加已有 Case</Button>
-                  <Button onClick={() => navigate(`/projects/${projectId}/workspace/import/${suiteId}`)}>
+                  <Button onClick={goImport}>
                     OpenAPI 导入
                   </Button>
                 </Space>
@@ -380,12 +388,13 @@ export default function WorkspaceSuiteDetailPage() {
             }
           />
         ) : (
-          <Table<SuiteCaseLink>
+          <Table<TestCase>
             rowKey="id"
             size="small"
             loading={loading}
             dataSource={linked}
             pagination={false}
+            scroll={{ x: "max-content" }}
             columns={[
               {
                 title: "顺序",
@@ -412,41 +421,31 @@ export default function WorkspaceSuiteDetailPage() {
               {
                 title: "Method",
                 width: 90,
-                render: (_, row) => {
-                  const item = caseMap.get(row.test_case_id);
-                  return item ? <MethodTag method={item.method} /> : <Tag>未知</Tag>;
-                },
+                render: (_, row) => <MethodTag method={row.method} />,
               },
               {
                 title: "Case 名称",
-                render: (_, row) => {
-                  const item = caseMap.get(row.test_case_id);
-                  return (
-                    <Button type="link" onClick={() => navigateToCase(row.test_case_id)}>
-                      {item?.name ?? row.test_case_id}
-                    </Button>
-                  );
-                },
+                render: (_, row) => (
+                  <Button type="link" onClick={() => navigateToCase(row.id)}>
+                    {row.name}
+                  </Button>
+                ),
               },
               {
                 title: "Path",
                 ellipsis: true,
-                render: (_, row) => {
-                  const item = caseMap.get(row.test_case_id);
-                  return (
-                    <Tooltip title={item?.path ?? ""}>
-                      <span className="code-path">{item?.path ?? "—"}</span>
-                    </Tooltip>
-                  );
-                },
+                render: (_, row) => (
+                  <Tooltip title={row.path}>
+                    <span className="code-path">{row.path}</span>
+                  </Tooltip>
+                ),
               },
               {
                 title: "启用",
                 width: 80,
-                render: (_, row) => {
-                  const item = caseMap.get(row.test_case_id);
-                  return <Switch size="small" checked={item?.enabled ?? false} disabled />;
-                },
+                render: (_, row) => (
+                  <Switch size="small" checked={row.enabled} disabled />
+                ),
               },
               {
                 title: "操作",
@@ -459,9 +458,9 @@ export default function WorkspaceSuiteDetailPage() {
                     cancelText="取消"
                     okButtonProps={{
                       danger: true,
-                      loading: removingId === row.test_case_id,
+                      loading: removingId === row.id,
                     }}
-                    onConfirm={() => onRemove(row.test_case_id)}
+                    onConfirm={() => onRemove(row.id)}
                   >
                     <Button type="link" danger>移除</Button>
                   </Popconfirm>

@@ -521,6 +521,7 @@ function ReportHistoryView({ projectId, envName, navigateToRun }: ReportHistoryV
           size="small"
           rowKey="id"
           dataSource={filteredRuns}
+          scroll={{ x: "max-content" }}
           pagination={{
             current: filters.page,
             pageSize: filters.pageSize,

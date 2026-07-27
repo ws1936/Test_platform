@@ -293,6 +293,7 @@ function AssertionsTab({ assertions }: { assertions: unknown }) {
   return (
     <Table<AssertionRow>
       rowKey={(_value, index) => String(index)}
+      scroll={{ x: "max-content" }}
       size="small"
       dataSource={rows}
       pagination={false}

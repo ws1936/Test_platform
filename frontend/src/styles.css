@@ -366,6 +366,12 @@ select {
 .grid-span-3 {
   grid-column: span 3;
 }
+.grid-span-5 {
+  grid-column: span 5;
+}
+.grid-span-7 {
+  grid-column: span 7;
+}
 
 .stat-card .ant-card-body {
   padding: var(--space-4);
@@ -890,7 +896,9 @@ select {
 
   .grid-span-3,
   .grid-span-4,
+  .grid-span-5,
   .grid-span-6,
+  .grid-span-7,
   .grid-span-8 {
     grid-column: span 12;
   }

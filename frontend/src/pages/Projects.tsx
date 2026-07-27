@@ -67,6 +67,7 @@ export default function ProjectsPage() {
           <Table<Project>
             rowKey="id"
             loading={projectsQuery.isLoading}
+            scroll={{ x: "max-content" }}
             dataSource={projectsQuery.data?.items ?? []}
             locale={{
               emptyText: <EmptyState title={search ? "未找到匹配项目" : "尚未创建项目"} action={!search ? <Button type="primary" onClick={openCreate}>新建项目</Button> : undefined} />,

@@ -94,6 +94,7 @@ export default function WorkspaceSuiteListPage() {
             loading={suitesQuery.isLoading}
             dataSource={suites}
             pagination={false}
+            scroll={{ x: "max-content" }}
             locale={{
               emptyText: (
                 <EmptyState

@@ -9,6 +9,7 @@ import WorkspaceCaseEditor from "./pages/workspace/WorkspaceCaseEditor";
 import WorkspaceCaseList from "./pages/workspace/WorkspaceCaseList";
 import WorkspaceEnvironment from "./pages/workspace/WorkspaceEnvironment";
 import WorkspaceImport from "./pages/workspace/WorkspaceImport";
+import WorkspaceImportIndex from "./pages/workspace/WorkspaceImportIndex";
 import WorkspaceInformation from "./pages/workspace/WorkspaceInformation";
 import WorkspaceOverview from "./pages/workspace/WorkspaceOverview";
 import WorkspaceReportDetail from "./pages/workspace/WorkspaceReportDetail";
@@ -31,6 +32,25 @@ function ProjectsRedirect({ to }: { to: string }) {
   const params = useParams();
   const projectId = params.projectId ?? "";
   return <Navigate to={`/projects/${projectId}/workspace/${to}`} replace />;
+}
+
+/**
+ * Legacy `/projects/:projectId/suites/:suiteId/import/openapi` redirect.
+ *
+ * React Router v6 resolves ``<Navigate to>`` relative to the *current URL*,
+ * not the route definition, so a bare ``../import`` would land on
+ * ``/projects/:projectId/suites/:suiteId/import`` (no workspace prefix) and
+ * fall through to the catch-all 404. Build the absolute workspace path here
+ * so the user lands on the dedicated importer page for the given Suite.
+ */
+function LegacyOpenApiImportRedirect() {
+  const { projectId, suiteId } = useParams();
+  return (
+    <Navigate
+      to={`/projects/${projectId ?? ""}/workspace/import/${suiteId ?? ""}`}
+      replace
+    />
+  );
 }
 
 const DashboardPage = lazy(() => import("./pages/Dashboard"));
@@ -62,7 +82,7 @@ export default function App() {
         <Route path="projects/:projectId/suites/:suiteId" element={<Navigate to="/projects/PLACEHOLDER/workspace/suite" replace />} />
         <Route
           path="projects/:projectId/suites/:suiteId/import/openapi"
-          element={<Navigate to="../import" replace />}
+          element={<LegacyOpenApiImportRedirect />}
         />
         <Route path="projects/:projectId/cases" element={<ProjectsRedirect to="case" />} />
         <Route path="projects/:projectId/cases/new" element={<ProjectsRedirect to="case" />} />
@@ -95,6 +115,7 @@ export default function App() {
           <Route path="report" element={<WorkspaceReportList />} />
           <Route path="report/:runId" element={<WorkspaceReportDetail />} />
           <Route path="report/:runId/result/:resultId" element={<WorkspaceResultDetail />} />
+          <Route path="import" element={<WorkspaceImportIndex />} />
           <Route path="import/:suiteId" element={<WorkspaceImport />} />
           <Route path="information" element={<WorkspaceInformation />} />
         </Route>

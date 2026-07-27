@@ -68,6 +68,7 @@ export default function UsersPage() {
           <Table<User>
             rowKey="id"
             loading={usersQuery.isLoading}
+            scroll={{ x: "max-content" }}
             dataSource={usersQuery.data?.items ?? []}
             locale={{ emptyText: <EmptyState title={search ? "未找到匹配用户" : "暂无用户"} action={!search ? <Button type="primary" onClick={openCreate}>新建用户</Button> : undefined} /> }}
             pagination={{

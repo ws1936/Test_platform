@@ -275,6 +275,7 @@ export default function WorkspaceCaseListPage() {
             rowKey="id"
             dataSource={cases}
             pagination={false}
+            scroll={{ x: "max-content" }}
             columns={[
               {
                 title: "Method",

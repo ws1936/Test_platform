@@ -250,6 +250,7 @@ export default function WorkspaceEnvironmentPage() {
             loading={environmentsQuery.isLoading}
             dataSource={environments}
             pagination={false}
+            scroll={{ x: "max-content" }}
             locale={{
               emptyText: (
                 <EmptyState
