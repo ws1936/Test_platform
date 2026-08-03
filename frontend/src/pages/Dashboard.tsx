@@ -2,6 +2,7 @@ import {
   PlayCircleOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
+  SwapOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,7 +17,7 @@ import {
   Space,
   Typography,
 } from "antd";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "../api/client";
 import { projectsApi } from "../api/projects";
@@ -35,7 +36,9 @@ import { useAuthStore } from "../store/auth";
 import { deriveDashboardRunData, getRecentSuites } from "../utils/dashboard";
 import { formatPercent } from "../utils/format";
 
-const DASHBOARD_PROJECTS_SIZE = 20;
+// 与 AppShell 的项目切换器共享同一缓存（page=1, size=DASHBOARD_PROJECTS_SIZE），
+// 以避免在两个外壳同时调 /projects 时重复请求。
+const DASHBOARD_PROJECTS_SIZE = 100;
 const DASHBOARD_RUN_WINDOW = 200;
 
 function isUuid(value: string | null): value is string {
@@ -53,7 +56,8 @@ export default function DashboardPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const projectsQuery = useQuery({
-    queryKey: queryKeys.projects({ page: 1, size: DASHBOARD_PROJECTS_SIZE, dashboard: true }),
+    // P1-3: 移除 queryKey 中无意义的 `dashboard: true` 维度，便于与 AppShell 共享缓存键。
+    queryKey: queryKeys.projects({ page: 1, size: DASHBOARD_PROJECTS_SIZE }),
     queryFn: () => projectsApi.list({ page: 1, size: DASHBOARD_PROJECTS_SIZE }),
   });
 
@@ -65,12 +69,22 @@ export default function DashboardPage() {
     () => new Set(ownedProjects.map((project) => project.id)),
     [ownedProjects],
   );
+
+  // P1-2: URL 中的合法 projectId 在 Project 列表仍在 loading 时保留为"待应用 ID"，
+  // 避免刷新 /dashboard?project=<id> 时，列表尚未回来 → 闪空 → 再恢复。
   const resolvedRequestedId = useMemo(() => {
     if (requestedProjectId && ownedProjectIds.has(requestedProjectId)) {
       return requestedProjectId;
     }
+    if (
+      requestedProjectId &&
+      isUuid(requestedProjectId) &&
+      projectsQuery.isLoading
+    ) {
+      return requestedProjectId;
+    }
     return null;
-  }, [ownedProjectIds, requestedProjectId]);
+  }, [ownedProjectIds, projectsQuery.isLoading, requestedProjectId]);
 
   const setProject = useCallback(
     (projectId: string) => {
@@ -94,26 +108,33 @@ export default function DashboardPage() {
     return null;
   }, [projectsQuery.error, projectsQuery.isError]);
 
-  const handleInvalid = useCallback(
-    (projectId: string | null) => {
-      if (!projectId) return;
-      if (!ownedProjectIds.has(projectId)) {
-        message.warning("URL 中指定的项目不可用，已回退到最近创建的项目。");
-        setProject("");
-      }
-    },
-    [message, ownedProjectIds, setProject],
-  );
-
-  if (requestedProjectId && isUuid(requestedProjectId) && !ownedProjectIds.has(requestedProjectId)) {
-    handleInvalid(requestedProjectId);
-  }
+  // P1-1: 将"URL 指定的项目不可用"判定从渲染过程迁到 useEffect，
+  // 避免 StrictMode / 并发渲染下 message.warning 被多次触发。
+  useEffect(() => {
+    if (!requestedProjectId) return;
+    if (!isUuid(requestedProjectId)) return;
+    if (projectsQuery.isLoading) return;
+    // 列表成功加载且非空、且 ID 不在列表中 → 提示并回退。
+    if (!projectsQuery.isError && !ownedProjectIds.size) return;
+    if (ownedProjectIds.has(requestedProjectId)) return;
+    message.warning("URL 中指定的项目不可用，已回退到最近创建的项目。");
+    setProject("");
+  }, [
+    ownedProjectIds,
+    projectsQuery.isError,
+    projectsQuery.isLoading,
+    message,
+    requestedProjectId,
+    setProject,
+  ]);
 
   const selectedProject = useMemo(
     () => ownedProjects.find((project) => project.id === resolvedRequestedId) ?? null,
     [ownedProjects, resolvedRequestedId],
   );
-  const selectedProjectId = selectedProject?.id ?? null;
+  // P1-2 配套: 当 URL 项目被暂存为"待应用"、ownedProjects 尚未包含它时，
+  // 仍允许 selectedProjectId 取到 resolvedRequestedId，便于下方 Panel 文案/链接保持稳定。
+  const selectedProjectId = selectedProject?.id ?? resolvedRequestedId;
   const selectedProjectName = selectedProject?.name ?? "未选择项目";
   const runsUrl = selectedProjectId ? `/projects/${selectedProjectId}/runs` : "/dashboard";
   const reportsUrl = selectedProjectId ? `/projects/${selectedProjectId}/reports` : "/dashboard";
@@ -165,6 +186,13 @@ export default function DashboardPage() {
   );
   const recentProjects = useMemo(() => ownedProjects.slice(0, 5), [ownedProjects]);
   const recentSuites = useMemo(() => getRecentSuites(suites), [suites]);
+
+  // 选中项目后：仅保留"最近 Suite"作为当前 Project 的最后一站；
+  // "最近 Project"语义与已选项目维度冲突，隐藏以聚焦。
+  // 兜底：在 Scope 卡里放一个"切换项目"出口（指向 /projects）。
+  const recentProjectsVisible = !selectedProjectId;
+  // 未选中时 Suite 与 Projects 并排各占 6 列；选中后 Suite 单独占 12 列。
+  const recentSuitesSpanClass = selectedProjectId ? "grid-span-12" : "grid-span-6";
 
   const handleRefresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -256,6 +284,20 @@ export default function DashboardPage() {
                   </Button>
                 </>
               ) : null}
+              {/* 兜底：选中项目后，提供一个"切换项目"文字链，避免隐藏"最近项目"后失去横向导航能力。 */}
+              {selectedProjectId ? (
+                <>
+                  <Typography.Text type="secondary">·</Typography.Text>
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<SwapOutlined />}
+                    onClick={() => navigate("/projects")}
+                  >
+                    切换项目
+                  </Button>
+                </>
+              ) : null}
             </Space>
           </Col>
         </Row>
@@ -283,6 +325,9 @@ export default function DashboardPage() {
       ) : null}
 
       <div className="content-grid dashboard-grid">
+        {/* BUG 修复: emptyTitle 必须由"真实数据为 0"派生，而不是 selectedProjectId。
+            之前一旦选了项目，emptyTitle 永远为真，导致 DashboardMetricCard 永远走
+            EmptyState 分支、value/percent/hint 全部不画。 */}
         <DashboardMetricCard
           className="grid-span-6"
           title="Run Success Rate"
@@ -292,7 +337,11 @@ export default function DashboardPage() {
           error={selectedProjectId ? runsResult.error : null}
           onRetry={handleRefresh}
           percent={projectRunData.successRate ?? undefined}
-          emptyTitle={selectedProjectId ? "暂无已完成 Run" : undefined}
+          emptyTitle={
+            selectedProjectId && projectRunData.completedCount === 0
+              ? "暂无已完成 Run"
+              : undefined
+          }
           onClick={selectedProjectId ? () => navigate(reportsUrl) : undefined}
         />
         <DashboardMetricCard
@@ -307,7 +356,11 @@ export default function DashboardPage() {
           loading={runsResult.isLoading}
           error={selectedProjectId ? runsResult.error : null}
           onRetry={handleRefresh}
-          emptyTitle={selectedProjectId ? "今日尚无执行" : undefined}
+          emptyTitle={
+            selectedProjectId && projectRunData.todayCount === 0
+              ? "今日尚无执行"
+              : undefined
+          }
           onClick={selectedProjectId ? () => navigate(reportsUrl) : undefined}
         />
 
@@ -330,16 +383,18 @@ export default function DashboardPage() {
           />
         </div>
 
-        <div className="grid-span-6">
-          <RecentProjectsPanel
-            projects={recentProjects}
-            loading={projectsQuery.isLoading || projectsQuery.isFetching}
-            error={projectsQuery.error}
-            onRetry={handleRefresh}
-            onCreate={() => setCreateOpen(true)}
-          />
-        </div>
-        <div className="grid-span-6">
+        {recentProjectsVisible ? (
+          <div className="grid-span-6">
+            <RecentProjectsPanel
+              projects={recentProjects}
+              loading={projectsQuery.isLoading || projectsQuery.isFetching}
+              error={projectsQuery.error}
+              onRetry={handleRefresh}
+              onCreate={() => setCreateOpen(true)}
+            />
+          </div>
+        ) : null}
+        <div className={recentSuitesSpanClass}>
           <RecentSuitesPanel
             projectId={selectedProjectId ?? ""}
             projectName={selectedProjectName}
@@ -350,17 +405,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        {!selectedProjectId ? (
-          <Card className="grid-span-12 surface-card dashboard-hint-card">
-            <Space direction="vertical" size={6}>
-              <Typography.Text strong>无法展示 Project 级数据</Typography.Text>
-              <Typography.Text type="secondary">
-                当前后端仅提供 Project 维度的执行、报告、Suite 查询。
-                平台级统计接口不在 MVP 范围，所以不会在 Dashboard 出现跨 Project 汇总。
-              </Typography.Text>
-            </Space>
-          </Card>
-        ) : null}
+        {/* 优化 G: 删去 dashboard-hint-card，与各 Panel 自带提示重复。*/}
       </div>
 
       <ProjectFormModal

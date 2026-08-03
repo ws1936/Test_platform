@@ -25,19 +25,18 @@ export default function RecentProjectsPanel({
   return (
     <Card
       className="surface-card dashboard-recent-projects"
-      title={
-        <Space>
-          <span>最近项目</span>
+      title="最近项目"
+      loading={loading}
+      // 优化 C: 把"按创建时间"挪到 extra，与"查看全部"并列，避免与 title 抢眼。
+      extra={
+        <Space size="middle" align="center">
           <Typography.Text type="secondary" className="dashboard-panel-subtitle">
             按创建时间
           </Typography.Text>
+          <Button type="link" onClick={() => navigate("/projects")}>
+            查看全部 <ArrowRightOutlined />
+          </Button>
         </Space>
-      }
-      loading={loading}
-      extra={
-        <Button type="link" onClick={() => navigate("/projects")}>
-          查看全部 <ArrowRightOutlined />
-        </Button>
       }
     >
       {error ? <ErrorState compact error={error} onRetry={onRetry} /> : null}

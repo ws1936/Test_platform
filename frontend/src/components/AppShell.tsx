@@ -43,6 +43,10 @@ import ChangePasswordModal from "./ChangePasswordModal";
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
 
+// 与 Dashboard 共享同一 Project 列表缓存（page=1, size=100），
+// 避免外壳 + Dashboard 同时调 /projects 时产生重复请求或缓存键不一致。
+const APP_SHELL_PROJECTS_SIZE = 100;
+
 function getProjectId(pathname: string): string | null {
   const match = pathname.match(/^\/projects\/([^/]+)/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -77,8 +81,9 @@ export default function AppShell() {
   const projectId = getProjectId(location.pathname);
 
   const projectsQuery = useQuery({
-    queryKey: queryKeys.projects({ page: 1, size: 100, shell: true }),
-    queryFn: () => projectsApi.list({ page: 1, size: 100 }),
+    // P1-3 配套: 移除 queryKey 中无意义的 `shell: true` 维度，与 Dashboard 共用 queryKey。
+    queryKey: queryKeys.projects({ page: 1, size: APP_SHELL_PROJECTS_SIZE }),
+    queryFn: () => projectsApi.list({ page: 1, size: APP_SHELL_PROJECTS_SIZE }),
     staleTime: 60_000,
   });
   const projectQuery = useQuery({
