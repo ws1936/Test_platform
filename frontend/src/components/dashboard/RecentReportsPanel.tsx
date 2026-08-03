@@ -50,7 +50,7 @@ export default function RecentReportsPanel({
           renderItem={(report) => (
             <List.Item
               className="dashboard-clickable-list-item"
-              onClick={() => navigate(`/projects/${projectId}/reports/${report.id}`)}
+              onClick={() => navigate(`/projects/${projectId}/workspace/report/${report.id}`)}
             >
               <List.Item.Meta
                 avatar={<FileSearchOutlined className="dashboard-list-icon" />}

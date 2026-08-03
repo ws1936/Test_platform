@@ -53,6 +53,40 @@ function LegacyOpenApiImportRedirect() {
   );
 }
 
+/**
+ * Legacy `/projects/:projectId/reports/:runId` redirect.
+ *
+ * ``<Navigate to="../report">`` 解析时以"当前 URL"为基准（不是路由 path），
+ * 在 ``/projects/:projectId/reports/:runId`` 上下文里会拼成
+ * ``/projects/:projectId/reports/report`` 而落到 404。这里改用 useParams
+ * 拼绝对路径，指向新工作区下对应的 Report 详情页。
+ */
+function LegacyReportDetailRedirect() {
+  const { projectId, runId } = useParams();
+  return (
+    <Navigate
+      to={`/projects/${projectId ?? ""}/workspace/report/${runId ?? ""}`}
+      replace
+    />
+  );
+}
+
+/**
+ * Legacy `/projects/:projectId/reports/:runId/results/:resultId` redirect。
+ *
+ * 同上原因：相对 ``../report`` 会被解析成 ``.../results/report`` 而 404。
+ * 这里保留 runId 与 resultId，跳到工作区下对应的 Result 详情页。
+ */
+function LegacyReportResultRedirect() {
+  const { projectId, runId, resultId } = useParams();
+  return (
+    <Navigate
+      to={`/projects/${projectId ?? ""}/workspace/report/${runId ?? ""}/result/${resultId ?? ""}`}
+      replace
+    />
+  );
+}
+
 const DashboardPage = lazy(() => import("./pages/Dashboard"));
 const ProjectsPage = lazy(() => import("./pages/Projects"));
 const RolesPage = lazy(() => import("./pages/admin/Roles"));
@@ -91,11 +125,11 @@ export default function App() {
         <Route path="projects/:projectId/reports" element={<ProjectsRedirect to="report" />} />
         <Route
           path="projects/:projectId/reports/:runId"
-          element={<Navigate to="../report" replace />}
+          element={<LegacyReportDetailRedirect />}
         />
         <Route
           path="projects/:projectId/reports/:runId/results/:resultId"
-          element={<Navigate to="../report" replace />}
+          element={<LegacyReportResultRedirect />}
         />
         <Route
           path="projects/:projectId/settings"

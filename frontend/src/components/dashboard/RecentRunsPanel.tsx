@@ -22,7 +22,9 @@ export default function RecentRunsPanel({
   onRetry,
 }: RecentRunsPanelProps) {
   const navigate = useNavigate();
-  const reportsPath = `/projects/${projectId}/reports`;
+  const reportsPath = projectId ? `/projects/${projectId}/reports` : "/dashboard";
+  // P1-4: 在 projectId 为空时，禁用行点击与鼠标指针，避免拼出 `/projects//reports/<id>`。
+  const rowsClickable = Boolean(projectId);
 
   return (
     <Card
@@ -61,10 +63,14 @@ export default function RecentRunsPanel({
               />
             ),
           }}
-          onRow={(run) => ({
-            onClick: () => navigate(`/projects/${projectId}/reports/${run.id}`),
-            style: { cursor: "pointer" },
-          })}
+          onRow={(run) =>
+            rowsClickable
+              ? {
+                  onClick: () => navigate(`/projects/${projectId}/workspace/report/${run.id}`),
+                  style: { cursor: "pointer" },
+                }
+              : { style: { cursor: "default" } }
+          }
           columns={[
             {
               title: "状态",
