@@ -553,6 +553,46 @@ paths:
       responses:
         '200':
           description: 成功
+  # ---- F015 报告导出 ----------------------------------------------------------
+  /runs/{run_id}/export:
+    get:
+      tags: [Run]
+      summary: 导出单次 Run 报告（F015：JSON 完整快照 / HTML 摘要）
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: format
+          in: query
+          required: false
+          description: |
+            F015 导出格式。json=JSON（默认）含 request/response/assertions
+            三个完整快照（response.headers 走 F010 _sanitize_headers 二次脱敏）；
+            html=自包含 HTML 报告（行内 CSS、不依赖外链）。越界返回 422。
+          schema:
+            type: string
+            enum: [json, html]
+            default: json
+      responses:
+        '200':
+          description: |
+            成功。Content-Type 与 format 匹配（application/json 或 text/html），
+            Content-Disposition: attachment; filename="run-<时间戳>-<uuid>.<fmt>"。
+          content:
+            application/json:
+              schema:
+                type: object
+            text/html:
+              schema:
+                type: string
+        '401': { description: 未认证 }
+        '403': { description: 非项目 owner / admin }
+        '404': { description: Run 不存在 }
+        '422':
+          description: format 越界 / path 参数非 UUID
   /results/{result_id}:
     get:
       tags: [Run]

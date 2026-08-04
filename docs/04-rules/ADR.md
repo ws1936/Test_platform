@@ -157,6 +157,50 @@ F014 选择 **`asyncio.Semaphore(N) + asyncio.gather`** 作为并发模型：
 
 ---
 
+## ADR-007：F015 报告导出采用 JSON + 自带 HTML 模板（不引入 Allure / 模板引擎）
+
+- 状态：Accepted
+- 日期：2026-08-04
+
+### 背景
+
+F010 / F011 已落地：所有 Run + Result 写库后，详尽报告只能走 API 查询。
+用户需要"下载一份报告传阅 / 存档 / 贴 CI artifact"，这是 P1 增强能力。
+BACKLOG §3 F015 说明："JSON / HTML 导出，Allure 可作为后续方向"。
+
+两个明确约束：
+* PRD §7：当前阶段不做 "Allure 静态站点托管"。
+* AI_RULES §4.4：暂缓技术中 "Allure 服务化：当前先做平台内置报告"。
+* AI_RULES §15：未经 ADR 批准不得引入新框架。
+
+### 决策
+
+F015 选择 **JSON + 自带 HTML 模板**，不引入 Allure / jinja2 / mako / weasyprint：
+
+* **JSON**：包含 Run 元信息 + 每条 Result 的 `request_snapshot` /
+  `response_snapshot` / `assertions_snapshot`（后两者让用户离线复现
+  请求/响应/断言，呼应 PRD §5.8 “结果详情”）。
+* **HTML**：纯 Python f-string + 行内 CSS + `esc()` 转义；只展示摘要
+  （状态 / 路径 / 耗时 / error_message），不塞 request/response 明文，
+  避免 HTML 体积爆炸 + XSS 风险。
+* 错误码不新增：format 校验在 Router 层 `pattern` 拦下为 422，
+  Run 不存在复用 `TestRunNotFoundException`（404），非 owner 复用
+  F011 的 鉴权路径。
+* **脱敏**：F015 对 `response_snapshot.headers` 走与 F010
+  `_sanitize_headers` 同一套黑名单二次脱敏；`request_snapshot.headers`
+  信任 F010 在持久化时已脱敏。F015 不重复脱敏 request，避免意外变动业务字段。
+
+### 影响
+
+- 零新依赖（requirements.txt 不变），零 DB Migration，零 frontend 改动。
+- 零新错误码，错误语义仍走 FastAPI 标准 422/404/403/401。
+- 报告脱敏纵深防御：F010 防持久化层泄露，F015 防导出层泄露。
+- 文档同步：`docs/01-product/F015_SPEC.md` 设计稿；`docs/05-test/ACCEPTANCE.md`
+  §F015 验收条目；`docs/03-api/OPENAPI.yaml` `/runs/{run_id}/export` 端点。
+- 后续 Allure 服务化（需独立 ADR）不在 F015 范围。
+
+---
+
 ## ADR 模板
 
 ```text

@@ -46,6 +46,7 @@ def _make_run():
             "id": uuid.UUID("11111111-2222-3333-4444-555555555555"),
             "name": "smoke",
             "scope": "project",
+            "scope_id": uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
             "status": "finished",
             "total": 2,
             "passed": 1,
@@ -56,26 +57,46 @@ def _make_run():
             "finished_at": datetime(2026, 1, 1, 12, 1, tzinfo=timezone.utc),
             "environment_id": uuid.uuid4(),
             "project_id": uuid.uuid4(),
+            "triggered_by": uuid.UUID("ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb"),
         },
     )()
 
 
-def _make_result(status="passed", elapsed_ms=42, error_message=None):
+def _make_result(
+    status="passed",
+    elapsed_ms=42,
+    error_message=None,
+    *,
+    case_name="case-x",
+    case_path="/api/x",
+    case_method="GET",
+    request_snapshot=None,
+    response_snapshot=None,
+    assertions_snapshot=None,
+):
+    """手工构造一个 ApiTestResult-like 对象。
+
+    关键字参数项可以是默认值（让基本测试不关心这些字段），
+    XSS / 脱敏 / 截断等专项测试可以手传 dict 覆盖。
+    """
     return type(
         "FakeResult",
         (),
         {
             "id": uuid.uuid4(),
             "test_case_id": uuid.uuid4(),
-            "case_name": "case-x",
-            "case_method": "GET",
-            "case_path": "/api/x",
+            "case_name": case_name,
+            "case_method": case_method,
+            "case_path": case_path,
             "status": status,
             "elapsed_ms": elapsed_ms,
             "error_code": None,
             "error_message": error_message,
             "started_at": datetime(2026, 1, 1, 12, 0, 1, tzinfo=timezone.utc),
             "finished_at": datetime(2026, 1, 1, 12, 0, 1, tzinfo=timezone.utc),
+            "request_snapshot": request_snapshot,
+            "response_snapshot": response_snapshot,
+            "assertions_snapshot": assertions_snapshot,
         },
     )()
 
@@ -119,19 +140,15 @@ def test_render_html_basic():
 def test_render_html_escapes_user_input():
     """XSS：用户输入的 < > & " 必须被 escape。"""
     run = _make_run()
-    evil = type("R", (), {
-        "id": uuid.uuid4(),
-        "test_case_id": uuid.uuid4(),
-        "case_name": '<script>alert("xss")</script>',
-        "case_method": "GET",
-        "case_path": "/api/<x>",
-        "status": "passed",
-        "elapsed_ms": 10,
-        "error_code": None,
-        "error_message": 'a & b "c"',
-        "started_at": None,
-        "finished_at": None,
-    })()
+    # 透传 None 给三个 snapshot 字段——这个测试只关心 XSS 转义，不关心快照内容。
+    evil = _make_result(
+        case_name='<script>alert("xss")</script>',
+        case_path="/api/<x>",
+        error_message='a & b "c"',
+        request_snapshot=None,
+        response_snapshot=None,
+        assertions_snapshot=None,
+    )
     payload = build_payload(run, [evil])
     html = render_html(payload)
     # Raw user-controlled markup should not appear; escaped text should.
@@ -402,3 +419,161 @@ async def test_export_run_403_for_other_user(client, db_session):
         headers=_auth(bob["token"]),
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# F015 专项：脱敏 / 完整快照 / 格式约定
+# ---------------------------------------------------------------------------
+
+
+def test_build_payload_includes_full_snapshots():
+    """JSON 导出必须包含 request/response/assertions 三个快照以满足 PRD §5.8。"""
+    req_snap = {
+        "method": "GET",
+        "url": "https://api.test/api/x",
+        "headers": {"Authorization": "Bearer SECRET"},
+        "params": {},
+        "body": None,
+        "timeout": 30,
+        "variables_used": {},
+    }
+    resp_snap = {
+        "status_code": 200,
+        "headers": {
+            "Authorization": "Bearer SECRET",  # 响应头里的敏感头也要脱敏
+            "Set-Cookie": "session=abc",
+            "Content-Type": "application/json",
+        },
+        "body": '{"ok":true}',
+        "body_truncated": False,
+        "elapsed_ms": 42,
+    }
+    asserts_snap = [
+        {"type": "status_code", "operator": "eq", "expected": 200, "passed": True},
+    ]
+    result = _make_result(
+        request_snapshot=req_snap,
+        response_snapshot=resp_snap,
+        assertions_snapshot=asserts_snap,
+    )
+    payload = build_payload(_make_run(), [result])
+    parsed = render_json(payload)
+    import json as _json
+
+    out = _json.loads(parsed)
+    item = out["results"][0]
+    assert item["request_snapshot"] == req_snap
+    assert item["assertions_snapshot"] == asserts_snap
+    # response_snapshot 的 headers 被脱敏，body / status_code / elapsed_ms 不变
+    sanitized_resp = item["response_snapshot"]
+    assert sanitized_resp["status_code"] == 200
+    assert sanitized_resp["body"] == '{"ok":true}'
+    assert sanitized_resp["elapsed_ms"] == 42
+    assert sanitized_resp["body_truncated"] is False
+    assert "Authorization" not in sanitized_resp["headers"]
+    assert "Set-Cookie" not in sanitized_resp["headers"]
+    assert "Set-Cookie".lower() not in {k.lower() for k in sanitized_resp["headers"]}
+    assert sanitized_resp["headers"]["Content-Type"] == "application/json"
+
+
+def test_build_payload_preserves_sanitized_request_snapshot():
+    """F015 信任 F010 持久化层的脱敏（快照在写入 DB 时已被 _sanitize_headers
+    处理）。F015 不应再二次脱敏 request_snapshot，避免意外改动业务字段。
+    但 response_snapshot.headers 仍走 F015 自己的脱敏路径，因为 F010
+    在写入时未脱敏 response headers（响应侧可能含 Set-Cookie / 业务自定义
+    敏感头）。本测试锁定：request_snapshot 原样保留；response.headers
+    会被 F015 再次脱敏。
+    """
+    # F010 写入 DB 时已脱敏：Authorization 已在持久化前被去掉。
+    req_snap = {
+        "method": "POST",
+        "url": "https://api.test/login",
+        "headers": {"X-Custom": "ok"},  # 没有 Authorization
+        "params": {},
+        "body": None,
+        "timeout": 30,
+        "variables_used": {},
+    }
+    resp_snap = {
+        "status_code": 200,
+        "headers": {"Authorization": "Bearer SECRET", "X-Trace": "abc"},
+        "body": "{}",
+        "body_truncated": False,
+        "elapsed_ms": 10,
+    }
+    result = _make_result(
+        request_snapshot=req_snap,
+        response_snapshot=resp_snap,
+        assertions_snapshot=None,
+    )
+    payload = build_payload(_make_run(), [result])
+    import json as _json
+    item = _json.loads(render_json(payload))["results"][0]
+    # request_snapshot 原样保留（已是 F010 脱敏后的产物）
+    assert item["request_snapshot"] == req_snap
+    # response.headers 被 F015 脱敏
+    assert "Authorization" not in item["response_snapshot"]["headers"]
+    assert item["response_snapshot"]["headers"]["X-Trace"] == "abc"
+
+
+def test_payload_handles_missing_or_null_snapshots_gracefully():
+    """容错：response_snapshot=None / headers 为空 / snapshot 字段缺失。"""
+    result = _make_result(
+        request_snapshot=None,
+        response_snapshot=None,
+        assertions_snapshot=None,
+    )
+    payload = build_payload(_make_run(), [result])
+    import json as _json
+    item = _json.loads(render_json(payload))["results"][0]
+    assert item["request_snapshot"] is None
+    assert item["response_snapshot"] is None
+    assert item["assertions_snapshot"] is None
+
+    # response_snapshot 有但 headers 为空
+    result2 = _make_result(
+        response_snapshot={"status_code": 200, "headers": {}, "body": "x"},
+    )
+    item2 = _json.loads(render_json(build_payload(_make_run(), [result2])))["results"][0]
+    # headers 空 dict 不报错，原样返回
+    assert item2["response_snapshot"]["headers"] == {}
+    assert item2["response_snapshot"]["status_code"] == 200
+
+
+def test_html_export_does_not_leak_authorization():
+    """HTML 报告不包含请求/响应快照，只展示摘要信息。
+    即使 test_snapshot 中有 Authorization，HTML 不该出现（防 XSS / 信息泄露）。
+    """
+    req_snap = {
+        "method": "GET",
+        "url": "https://api.test/api/private",
+        "headers": {"Authorization": "Bearer SUPER_SECRET_TOKEN"},
+        "params": {},
+        "body": None,
+        "timeout": 30,
+        "variables_used": {},
+    }
+    resp_snap = {
+        "status_code": 403,
+        "headers": {"WWW-Authenticate": "Bearer"},
+        "body": "forbidden",
+        "body_truncated": False,
+        "elapsed_ms": 10,
+    }
+    result = _make_result(
+        status="failed",
+        request_snapshot=req_snap,
+        response_snapshot=resp_snap,
+        assertions_snapshot=[],
+        error_message="HTTP 403",  # HTML 只展示 error_message，不展示 response body
+    )
+    payload = build_payload(_make_run(), [result])
+    html = render_html(payload)
+    # HTML 表格只展示 case_name / case_method / case_path / elapsed / error_message
+    # 不展示 request/response body/header；error_message 被展示。
+    assert "SUPER_SECRET_TOKEN" not in html
+    assert "Authorization" not in html  # request header 名也不该出现
+    assert "WWW-Authenticate" not in html
+    assert "HTTP 403" in html  # error_message 被展示
+    assert "WWW-Authenticate".lower() not in html.lower()
+    assert "forbidden" not in html  # response body 不会出现在 HTML

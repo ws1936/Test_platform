@@ -114,6 +114,7 @@
 | `ApiExecutor` | 使用 httpx 发送 HTTP 请求 |
 | `AssertionEngine` | 执行规则化断言 |
 | `ResultRecorder` | 保存结果并更新统计 |
+| `ReportExporter` | F015：报告导出（`app/domain/test_run/exporter.py`）。输出 JSON / HTML；复用 F010 `_sanitize_headers` 对 response_snapshot.headers 二次脱敏 |
 
 ---
 
@@ -167,6 +168,8 @@
 ```
 
 > **F014 有限并发**：从 F014 开始，`逐条执行` 改为 `受控并发执行`——`TestRunner` 使用 `asyncio.Semaphore(N)` + `asyncio.gather` 在进程内限流，默认 `N=settings.TEST_RUN_MAX_CONCURRENCY`（4）。SQLAlchemy `AsyncSession` 读写由一把 `asyncio.Lock` 串行化保证 ORM 安全，HTTP 请求本身在锁外真正并行。调用方可过 `POST /projects/{pid}/runs?concurrency=N`（1≤N≤64）覆盖默认值。详见 `docs/01-product/F014_SPEC.md` 与 `docs/04-rules/ADR.md` ADR-006。
+>
+> **F015 报告导出**：从 F015 开始，用户可过 `GET /runs/{run_id}/export?format=json|html` 下载报告。`ReportExporter` (`app/domain/test_run/exporter.py`) 输出 JSON（含 request/response/assertions 三件套，response.headers 二次脱敏）与自包含 HTML（行内 CSS + `esc()` XSS 防护）。**不引入 Allure / jinja2 / mako / weasyprint**（呼应 PRD §7 + AI_RULES §4.4 / §15）。详见 `docs/01-product/F015_SPEC.md` 与 `docs/04-rules/ADR.md` ADR-007。
 
 ---
 

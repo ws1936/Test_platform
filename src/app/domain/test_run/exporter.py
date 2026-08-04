@@ -1,12 +1,27 @@
 """F015 报告导出 — 独立模块，避免污染现有 service.py。
 
 把 export_run + HTML 渲染放在这里，service.py 只 import + delegate。
+
+设计要点（呼应 PRD §5.8 + §6 可追溯、AI_RULES §6 不进日志敏感数据）：
+
+* JSON 输出必须包含每条 result 的 ``request_snapshot`` / ``response_snapshot``
+  / ``assertions_snapshot``，否则导出报告失去“失败定位”的价值。
+* ``response_snapshot.headers`` 复用 F010 的 :func:`_sanitize_headers`，
+  防止 ``Authorization`` / ``Cookie`` / API Key 等敏感头泄到导出文件里。
+* body 截断由 F010 在持久化时完成（``response_snapshot.body_truncated``
+  标记），F015 不再二次截断。
 """
 from __future__ import annotations
 
 import json as _json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
+
+# 复用 F010 的脱敏黑名单 —— 这是一个 module 级 frozenset，公开 re-export，
+# 位于 ``runner.__all__``，所以这里是合法导入。
+from app.domain.test_engine.runner import (
+    _sanitize_headers as _sanitize_headers,
+)
 
 # HTML entities. The entity itself starts with ``&``; using ``chr(38)``
 # keeps the literals unambiguous while producing standards-compliant output.
@@ -28,13 +43,46 @@ def esc(s: Any) -> str:
     return s
 
 
+def _sanitize_response_snapshot(snap: Any) -> Any:
+    """F015：复用 F010 脱敏逻辑过滤 ``response_snapshot.headers``。
+
+    snapshot 是从 DB 读出的 dict，本身已是 JSON-safe；这里只动 ``headers``
+    子字段，不改 ``body`` / ``status_code`` / ``elapsed_ms``。
+    返回的是新 dict，不修改原对象，保证 idempotent。
+    """
+    if not snap or not isinstance(snap, dict):
+        return snap
+    headers = snap.get("headers")
+    if not headers:
+        return snap
+    # copy 后替换 headers，不污染原 snapshot（调用方可能复用 ORM 对象）
+    new_snap = dict(snap)
+    new_snap["headers"] = _sanitize_headers(dict(headers))
+    return new_snap
+
+
 def build_payload(run: Any, results: List[Any]) -> Dict[str, Any]:
-    """把 ORM 对象转为可序列化的 dict。"""
+    """把 ORM 对象转为可序列化的 dict。
+
+    Run 级口径与 F011 :class:`TestRunResponse` + :meth:`_decorate_run_response`
+    对齐，包含 F011 计算字段 ``pass_rate`` / ``elapsed_seconds``。
+    Result 级口径包含完整的请求/响应/断言快照（脱敏后）以满足 PRD §5.8。
+    """
+    total = run.total or 0
+    passed = run.passed or 0
+    pass_rate = (passed / total) if total else None
+    elapsed_seconds: Any = None
+    if run.started_at and run.finished_at:
+        elapsed_seconds = round(
+            (run.finished_at - run.started_at).total_seconds(), 3
+        )
+
     return {
         "run": {
             "id": str(run.id),
             "name": run.name,
             "scope": run.scope,
+            "scope_id": str(run.scope_id) if run.scope_id else None,
             "status": run.status,
             "total": run.total,
             "passed": run.passed,
@@ -45,6 +93,9 @@ def build_payload(run: Any, results: List[Any]) -> Dict[str, Any]:
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
             "environment_id": str(run.environment_id),
             "project_id": str(run.project_id),
+            "triggered_by": str(run.triggered_by) if run.triggered_by else None,
+            "pass_rate": pass_rate,
+            "elapsed_seconds": elapsed_seconds,
         },
         "results": [
             {
@@ -59,6 +110,14 @@ def build_payload(run: Any, results: List[Any]) -> Dict[str, Any]:
                 "error_message": r.error_message,
                 "started_at": r.started_at.isoformat() if r.started_at else None,
                 "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                # F015 核心：完整快照，让“失败定位”不依赖原始 DB 查询。
+                # response_snapshot.headers 在 _sanitize_response_snapshot
+                # 里走与 F010 runner._sanitize_headers 同一套黑名单。
+                "request_snapshot": r.request_snapshot,
+                "response_snapshot": _sanitize_response_snapshot(
+                    r.response_snapshot
+                ),
+                "assertions_snapshot": r.assertions_snapshot,
             }
             for r in results
         ],

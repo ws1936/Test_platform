@@ -101,6 +101,22 @@ MVP 完成时必须满足：
 - [ ] 敏感 header（`Authorization` / `Cookie` 等）和 response body 不写日志。
 - [ ] 全量回归：`pytest src/tests/` 通过，0 回归。
 
+### 4.6 报告导出（F015）
+
+- [ ] `GET /runs/{run_id}/export?format=json` 返回 `application/json; charset=utf-8` + `Content-Disposition: attachment; filename="run-<时间戳>-<uuid>.json"`。
+- [ ] `GET /runs/{run_id}/export?format=html` 返回 `text/html; charset=utf-8` + 同样 `attachment` 头；HTML 为自包含（行内 CSS，不依赖外链）。
+- [ ] `format` 越界（如 `xml`）由 FastAPI `pattern` 校验返回 422。
+- [ ] JSON 中 `run` 包含：id / name / scope / scope_id / status / total / passed / failed / error / skipped / started_at / finished_at / environment_id / project_id / triggered_by / pass_rate / elapsed_seconds。
+- [ ] JSON 中 `results[]` 每条包含 request_snapshot / response_snapshot / assertions_snapshot 三个完整快照（脱敏后）。
+- [ ] `response_snapshot.headers` 被 `_sanitize_headers` 二次脱敏：`Authorization` / `Cookie` / `Set-Cookie` / `x-api-key` 等不出现在导出中。
+- [ ] `request_snapshot.headers` 保留 F010 在持久化时已脱敏的产物，F015 不再二次处理。
+- [ ] HTML 表格不展示 request/response/assertion 明文，仅 case_name / case_method / case_path / elapsed_ms / error_message。
+- [ ] HTML 中所有用户控制字段经 `esc()` 转义（XSS 防护）：将特殊字符替换为对应的 HTML entity。
+- [ ] 端点鉴权：未登录 401；非 owner 非 admin 403；run 不存在 404。
+- [ ] 不新增业务错误码（沿用 FastAPI 标准 422/404/403/401）。
+- [ ] 零 DB Migration、零 Alembic 改动、零新依赖（requirements.txt 不变）。
+- [ ] 全量回归：`pytest src/tests/` 通过，0 回归。
+
 ---
 
 ## 5. 执行验收
