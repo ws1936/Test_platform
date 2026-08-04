@@ -249,8 +249,16 @@ class TestRunService:
         request: TestRunCreateRequest,
         *,
         current_user: User,
+        max_concurrency: Optional[int] = None,
     ) -> TestRunResponse:
-        """Create + execute a run synchronously."""
+        """Create + execute a run synchronously.
+
+        F014: ``max_concurrency`` lets the caller override the default
+        concurrency (``settings.TEST_RUN_MAX_CONCURRENCY``) for this
+        single run. ``None`` (the default) keeps the F010/F013
+        contract intact. Any non-positive value is clamped to ``1``
+        inside :class:`TestRunner` so the call never raises.
+        """
         await self._load_project_for_user(
             project_id, current_user=current_user, for_modify=True
         )
@@ -281,7 +289,7 @@ class TestRunService:
         await self.run_repo.create(run)
         await self.session.commit()
 
-        runner = TestRunner(self.session)
+        runner = TestRunner(self.session, max_concurrency=max_concurrency)
         updated = await runner.execute_run(run=run, env=env, case_ids=case_ids)
         response = TestRunResponse.model_validate(updated)
         return _decorate_run_response(updated, response)
@@ -293,8 +301,16 @@ class TestRunService:
         *,
         current_user: User,
         name: Optional[str] = None,
+        max_concurrency: Optional[int] = None,
     ) -> TestRunResponse:
-        """Convenience entry: execute a single case as a 1-case run."""
+        """Convenience entry: execute a single case as a 1-case run.
+
+        F014: ``max_concurrency`` is accepted for API symmetry with
+        :meth:`create_run`; for a 1-case run the value has no effect on
+        parallelism (there is nothing to overlap), but keeping the
+        signature consistent lets the router share one query parameter
+        and lets future bulk-calls (e.g. ``run_test_cases``) inherit it.
+        """
         case = await self.case_repo.get_by_id(case_id)
         if case is None:
             raise TestCaseNotFoundException()
@@ -326,7 +342,7 @@ class TestRunService:
         await self.run_repo.create(run)
         await self.session.commit()
 
-        runner = TestRunner(self.session)
+        runner = TestRunner(self.session, max_concurrency=max_concurrency)
         updated = await runner.execute_run(
             run=run, env=env, case_ids=[case.id]
         )

@@ -481,7 +481,7 @@ paths:
   /projects/{project_id}/runs:
     post:
       tags: [Run]
-      summary: 创建执行批次
+      summary: 创建执行批次（F014：可传 ?concurrency= 覆盖默认并发度）
       parameters:
         - name: project_id
           in: path
@@ -489,6 +489,18 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: concurrency
+          in: query
+          required: false
+          description: |
+            F014：单 Run 内同时在飞的最大 case 数（1 ≤ N ≤ 64）。
+            不传则使用服务器默认 settings.TEST_RUN_MAX_CONCURRENCY（默认 4）。
+            传 1 恢复串行执行。越界返回 422。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 64
+            default: null
       requestBody:
         required: true
         content:
@@ -498,6 +510,8 @@ paths:
       responses:
         '201':
           description: 创建成功
+        '422':
+          description: concurrency 越界 / scope 为空 / 请求体验证失败
     get:
       tags: [Run]
       summary: 执行历史

@@ -84,6 +84,23 @@ MVP 完成时必须满足：
 - [ ] 敏感头（`Authorization` / `Cookie` 等）在解析/落库过程中不被写入日志。
 - [ ] 零 DB 改动、零 Alembic migration、不动 model.py。
 
+### 4.5 有限并发执行（F014）
+
+- [ ] 单 Run 内多条 TestCase 在 `TestRunner` 进程内以 `asyncio.Semaphore` 限流并发执行；默认 `settings.TEST_RUN_MAX_CONCURRENCY=4`。
+- [ ] `?concurrency=N` 传入合法范围 `1 ≤ N ≤ 64` 时，`TestRunner` 收到的 `max_concurrency` 等于 N。
+- [ ] `?concurrency=0` / `?concurrency=200` 在 Router 层返回 422，runner 不被调用。
+- [ ] 不传 `?concurrency=` 时，Service 透传 `None`，runner 读 settings 默认值。
+- [ ] `max_concurrency=1` 退化为串行（峰值并发 = 1）。
+- [ ] `max_concurrency=N` 时实测峰值并发 ≤ N 且 ≥ 2（验证限流真生效）。
+- [ ] 非法 `max_concurrency`（0 / 负数）回落为 1，不抛异常。
+- [ ] 并发下 `passed + failed + error + skipped == total` 恒成立。
+- [ ] `_execute_single` 抛未预期 `RuntimeError` 不中断 `gather`，其他 case 仍完成。
+- [ ] 单 case 列表（size=1）的并发逻辑退化为普通执行。
+- [ ] `POST /test-cases/{case_id}/run?concurrency=N` 接受对称参数（1 case 无并行语义，仅透传）。
+- [ ] 零 DB Migration、零 Alembic 改动、零新依赖（requirements.txt 不变）。
+- [ ] 敏感 header（`Authorization` / `Cookie` 等）和 response body 不写日志。
+- [ ] 全量回归：`pytest src/tests/` 通过，0 回归。
+
 ---
 
 ## 5. 执行验收

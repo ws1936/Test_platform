@@ -64,8 +64,11 @@ result_router = APIRouter(prefix="/results", tags=["TestRun"])
         "synchronously. The response includes the final state of the "
         "run — counters, status, and timestamps — because MVP runs "
         "are synchronous (AI_RULES §4.4: no Celery / no background "
-        "workers). For long runs in the future, F014 will introduce "
-        "async execution."
+        "workers).\n\n"
+        "F014: optional ``concurrency`` query parameter controls how "
+        "many cases run in parallel inside a single Run. Omit to use "
+        "the server default (``settings.TEST_RUN_MAX_CONCURRENCY``). "
+        "Pass ``1`` to restore serial execution."
     ),
     responses={
         201: {"description": "Run created and finished"},
@@ -78,11 +81,26 @@ result_router = APIRouter(prefix="/results", tags=["TestRun"])
 async def create_run(
     project_id: UUID,
     request: TestRunCreateRequest,
+    concurrency: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=64,
+        description=(
+            "F014: max cases running in parallel for this single Run. "
+            "Omit (or pass ``None``) to use the server default "
+            "(``settings.TEST_RUN_MAX_CONCURRENCY``, currently 4). "
+            "Pass ``1`` to restore serial execution. Values outside "
+            "[1, 64] are rejected with 422."
+        ),
+    ),
     test_run_service: TestRunService = Depends(get_test_run_service),
     current_user: User = Depends(get_current_user),
 ) -> TestRunResponse:
     return await test_run_service.create_run(
-        project_id, request, current_user=current_user
+        project_id,
+        request,
+        current_user=current_user,
+        max_concurrency=concurrency,
     )
 
 
@@ -326,13 +344,26 @@ async def get_result(
     description=(
         "Convenience endpoint that wraps ``POST /projects/{pid}/runs`` "
         "with ``scope=\"case\"``. Internally a 1-case run is created "
-        "and executed synchronously."
+        "and executed synchronously. F014: ``concurrency`` is accepted "
+        "for API symmetry; for a 1-case run it has no effect on "
+        "parallelism, so the value is forwarded to :class:`TestRunner` "
+        "but never changes wall-clock time."
     ),
 )
 async def run_single_case(
     case_id: UUID,
     environment_id: UUID = Query(...),
     name: Optional[str] = Query(default=None),
+    concurrency: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=64,
+        description=(
+            "F014: accepted for API symmetry with "
+            "``POST /projects/{pid}/runs``. No effect for a 1-case run; "
+            "see ``POST /projects/{pid}/runs`` for the full contract."
+        ),
+    ),
     test_run_service: TestRunService = Depends(get_test_run_service),
     current_user: User = Depends(get_current_user),
 ) -> TestRunResponse:
@@ -341,4 +372,5 @@ async def run_single_case(
         environment_id,
         current_user=current_user,
         name=name,
+        max_concurrency=concurrency,
     )

@@ -44,7 +44,7 @@
 | F011 | 测试报告 | P0 | Done | 3 个聚合端点（单 run 概览 / 项目级概览 / 失败原因列表）+ TestRunResponse 新增 pass_rate/elapsed_seconds 计算字段 + list_project_runs 加 status 过滤 + 无新表（复用 F010 表） |
 | F012 | Swagger / OpenAPI 导入 | P1 | Done | 从 OpenAPI 3.x 文档生成基础 API 用例 + stdlib 解析 + 1 个 POST 端点（?dry_run=true） + 复用 F006/F007 零新表 |
 | F013 | 批量生成基础用例 | P1 | Done | 已具备基于 F012 的批量：多 OpenAPI 文档一次提交 + `?batch=true`/两段式 `?dry_run` 流转 + `on_conflict`（skip / overwrite）+ 每文档独立错误隔离 + N=5 文档 / M=50 operation 配置上限 + 1 个新错误码 `OPENAPI_BATCH_LIMIT_EXCEEDED`。跨请求进程内 preview_cache 共享（修复 F012 latent）。零新表、零 Alembic migration、不动 model.py。设计稿 `docs/01-product/F013_SPEC.md`，验收条目 `docs/05-test/ACCEPTANCE.md §4.4`，测试覆盖 T1–T13（32 个 openapi_importer 测试全绿） |
-| F014 | 有限并发执行 | P1 | Todo | 提升执行效率，但不做分布式执行 |
+| F014 | 有限并发执行 | P1 | Done | `TestRunner` 进程内 `asyncio.Semaphore` 限流 + Router `?concurrency=` 可选入参（1≤N≤64，默认 `settings.TEST_RUN_MAX_CONCURRENCY=4`）；并发下计数器一致、异常隔离、`_execute_single` 未预期异常不中断其他 case；零 DB Migration、零新依赖。设计稿 `docs/01-product/F014_SPEC.md`，ADR `docs/04-rules/ADR.md` ADR-006，验收条目 `docs/05-test/ACCEPTANCE.md` §4.5，测试 `test_runner_concurrency.py`(8) + `test_test_run_concurrency_param.py`(9) 全绿 |
 | F015 | 报告导出 | P1 | Todo | JSON / HTML 导出，Allure 可作为后续方向 |
 | F016 | 前端 API 测试页面 | P1 | Todo | 项目、环境、用例、执行、报告管理页面 |
 | F017 | 定时执行 | P2 | Later | 当前不进入 MVP，待执行闭环稳定后评估 |

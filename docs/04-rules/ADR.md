@@ -117,6 +117,46 @@ MVP 不支持用户提交 Python/JavaScript 脚本执行，只支持变量替换
 
 ---
 
+## ADR-006：F014 单 Run 内采用 asyncio + Semaphore 有限并发
+
+- 状态：Accepted
+- 日期：2026-08-04
+
+### 背景
+
+F010 的 `TestRunner` 串行执行所有用例。在一个含几十到上百条用例
+的项目级 Run 上，回归耗时随用例数线性增长，用户体验差。
+BACKLOG §3 F014 要求提升执行效率，但显式排除分布式执行。
+
+### 决策
+
+F014 选择 **`asyncio.Semaphore(N) + asyncio.gather`** 作为并发模型：
+
+* 并发粒度 = **单个 TestRun 内的多条 TestCase**。不做跨 Run 调度、
+  不做多进程 worker、不做 Celery / Redis / MQ。
+* 默认并发度由 `settings.TEST_RUN_MAX_CONCURRENCY`（4）控制；调用方
+  可通过 `?concurrency=N`（1 ≤ N ≤ 64）在单次 Run 上覆盖。
+* 非法值（≤0、>64）由 Router 在 422 阶段拒绝；绕过 Router 直接调
+  Service 时的非法值由 `TestRunner.__init__` 静默回落为 1，不抛异常。
+* SQLAlchemy `AsyncSession` 非协程安全，因此 ORM 读写由一把
+  `asyncio.Lock` 串行化；HTTP 请求本身在锁外，并行度不受影响。
+* `_execute_single` 内部已捕获所有已知异常；外层 `except Exception`
+  作为 defensive net，确保一个 case 崩溃不影响其他 case。
+
+### 影响
+
+- 零新依赖：复用现有 `httpx.AsyncClient`。
+- 零 DB 改动：沿用 F011 的 `api_test_runs` / `api_test_results` 表。
+- 性能：并发度 N 下，N 个慢 case 的总耗时接近 `ceil(T / N) * case_cost`，
+  对项目级回归（≥ 10 条 case）通常带来 ≥ 50% 墙钟下降。
+- DB 写入仍是隐式串行瓶颈：如未来需要突破，可演进为 per-task session
+  + 显式事务边界，但**不在 F014 范围**。
+- 文档同步：`docs/02-design/ARCHITECTURE.md` §5 标注；`docs/01-product/F014_SPEC.md`
+  为设计稿；`docs/05-test/ACCEPTANCE.md` §4.5 为验收条目；`docs/03-api/OPENAPI.yaml`
+  同步 `?concurrency=` 参数；`docs/01-product/BACKLOG.md` 状态 Todo → Doing → Done。
+
+---
+
 ## ADR 模板
 
 ```text

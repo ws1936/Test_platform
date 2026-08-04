@@ -166,6 +166,8 @@
 返回执行报告
 ```
 
+> **F014 有限并发**：从 F014 开始，`逐条执行` 改为 `受控并发执行`——`TestRunner` 使用 `asyncio.Semaphore(N)` + `asyncio.gather` 在进程内限流，默认 `N=settings.TEST_RUN_MAX_CONCURRENCY`（4）。SQLAlchemy `AsyncSession` 读写由一把 `asyncio.Lock` 串行化保证 ORM 安全，HTTP 请求本身在锁外真正并行。调用方可过 `POST /projects/{pid}/runs?concurrency=N`（1≤N≤64）覆盖默认值。详见 `docs/01-product/F014_SPEC.md` 与 `docs/04-rules/ADR.md` ADR-006。
+
 ---
 
 ## 6. 技术选型
