@@ -83,8 +83,10 @@ export default function WorkspaceSuiteDetailPage() {
     enabled: Boolean(projectId && addOpen),
   });
 
-  const linked: TestCase[] =
-    (suiteCasesQuery.data as TestCase[] | undefined) ?? [];
+  const linked: TestCase[] = useMemo(
+    () => (suiteCasesQuery.data as TestCase[] | undefined) ?? [],
+    [suiteCasesQuery.data],
+  );
 
   const linkedCaseIds = useMemo(
     () => new Set(linked.map((item) => item.id)),

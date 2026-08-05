@@ -12,8 +12,10 @@ import {
   Card,
   Form,
   Input,
+  InputNumber,
   Radio,
   Select,
+  Slider,
   Space,
   Tag,
   Tooltip,
@@ -23,10 +25,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
 import { environmentsApi } from "../../api/environments";
+import { queryKeys } from "../../api/queryKeys";
 import { runsApi } from "../../api/runs";
 import { suitesApi } from "../../api/suites";
 import { testCasesApi } from "../../api/testCases";
-import { queryKeys } from "../../api/queryKeys";
 import type {
   RunScope,
   SuiteCaseLink,
@@ -37,6 +39,13 @@ import { EmptyState, ErrorState, LoadingBlock } from "../../components/AsyncStat
 import PageHeader from "../../components/PageHeader";
 import { MethodTag } from "../../components/StatusTags";
 import { useProjectWorkspace } from "../../components/workspace/projectWorkspaceContext";
+
+// F014 客户端默认值 / 上限（与后端 settings.TEST_RUN_MAX_CONCURRENCY 同步）。
+// 前后端任一改动需过 ADR；这里只承担"UI 默认值 / 上限"职责，
+// 真正的并发度由后端 TestRunner 决定（服务侧兜底 max(1, raw)）。
+const DEFAULT_CONCURRENCY = 4;
+const MIN_CONCURRENCY = 1;
+const MAX_CONCURRENCY = 64;
 
 /**
  * Workspace Run Center — 手动发起执行。
@@ -51,6 +60,7 @@ import { useProjectWorkspace } from "../../components/workspace/projectWorkspace
  * 2. 提交前显示预期 Case 数（防止误发大型 Run）
  * 3. 默认环境优先选中；无默认环境时阻止执行（与后端语义一致）
  * 4. 支持 ?scope=...&scopeId=... 预填（Header 的"快速执行"按钮）
+ * 5. F014：暴露 max_concurrency（1-64）供用户覆盖 server 默认
  */
 export default function WorkspaceRunPage() {
   const { message } = App.useApp();
@@ -70,6 +80,8 @@ export default function WorkspaceRunPage() {
     defaultEnvironmentId,
   );
   const [runName, setRunName] = useState("");
+  // F014：用户可在 UI 上覆盖单 Run 的并发度。默认值与后端 settings.TEST_RUN_MAX_CONCURRENCY 对齐。
+  const [concurrency, setConcurrency] = useState<number>(DEFAULT_CONCURRENCY);
 
   // 同步默认环境
   useEffect(() => {
@@ -155,12 +167,17 @@ export default function WorkspaceRunPage() {
       if (scope !== "project" && !scopeId) {
         throw new Error("请选择执行范围");
       }
-      return runsApi.create(projectId, {
-        name: runName.trim() || undefined,
-        environment_id: environmentId,
-        scope,
-        scope_id: scopeId ?? projectId,
-      });
+      return runsApi.create(
+        projectId,
+        {
+          name: runName.trim() || undefined,
+          environment_id: environmentId,
+          scope,
+          scope_id: scopeId ?? projectId,
+        },
+        // F014：把 UI 上的 concurrency 透传到后端 query ?concurrency=
+        { concurrency },
+      );
     },
     onSuccess: (run: TestRun) => {
       message.success("执行完成，跳转报告");
@@ -180,6 +197,8 @@ export default function WorkspaceRunPage() {
     (scope === "case" && Boolean(scopeId));
   const hasCases = expectedCases.length > 0;
   const canSubmit = hasEnv && targetReady && hasCases && !createRunMutation.isPending;
+  // F014：concurrent_candidates = expectedCases.length 时并发才有意义；并发度不应超过 case 数。
+  const effectiveConcurrency = Math.max(MIN_CONCURRENCY, Math.min(concurrency, Math.max(expectedCases.length, MIN_CONCURRENCY)));
 
   // ===== 渲染 =====
   if (casesQuery.isLoading || environmentsQuery.isLoading) {
@@ -323,7 +342,10 @@ export default function WorkspaceRunPage() {
               ) : null}
             </Form.Item>
 
-            <Form.Item label="执行名称（可选）" extra="留空将自动生成 'Run @ {时间戳}'">
+            <Form.Item
+              label="执行名称（可选）"
+              extra="留空将自动生成 'Run @ {时间戳}'"
+            >
               <Input
                 allowClear
                 maxLength={200}
@@ -332,6 +354,49 @@ export default function WorkspaceRunPage() {
                 onChange={(e) => setRunName(e.target.value)}
                 placeholder="例如：用户服务回归 - v1.2"
               />
+            </Form.Item>
+
+            {/* F014：单 Run 并发度。传 1 等于串行；后端兜底非法值。 */}
+            <Form.Item
+              label={
+                <Space size={6}>
+                  <span>并发度（F014）</span>
+                  <Tooltip title="单 Run 内同时在飞的最大 case 数。1=串行；后端默认 4；上限 64。高并发可能触发被测服务限流。">
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      （?concurrency=）
+                    </Typography.Text>
+                  </Tooltip>
+                </Space>
+              }
+              extra={`当前预期 Case 数：${expectedCases.length}；实际生效 ${effectiveConcurrency}`}
+            >
+              <Space.Compact style={{ width: "100%" }}>
+                <Slider
+                  min={MIN_CONCURRENCY}
+                  max={MAX_CONCURRENCY}
+                  value={concurrency}
+                  onChange={(v: number) => setConcurrency(v)}
+                  style={{ flex: 1, marginRight: 16 }}
+                  marks={{
+                    1: "1",
+                    [DEFAULT_CONCURRENCY]: String(DEFAULT_CONCURRENCY),
+                    [MAX_CONCURRENCY]: String(MAX_CONCURRENCY),
+                  }}
+                  disabled={!hasCases}
+                />
+                <InputNumber
+                  min={MIN_CONCURRENCY}
+                  max={MAX_CONCURRENCY}
+                  value={concurrency}
+                  onChange={(v) => {
+                    if (typeof v === "number" && Number.isFinite(v)) {
+                      setConcurrency(v);
+                    }
+                  }}
+                  disabled={!hasCases}
+                  style={{ width: 96 }}
+                />
+              </Space.Compact>
             </Form.Item>
           </Form>
         </Card>
@@ -387,6 +452,18 @@ export default function WorkspaceRunPage() {
                   <Tag color="orange" icon={<ExclamationCircleOutlined />}>
                     0 条
                   </Tag>
+                )
+              }
+            />
+            <PreviewRow
+              label="并发度"
+              value={
+                hasCases ? (
+                  <Tag color={effectiveConcurrency === 1 ? "default" : "geekblue"}>
+                    {effectiveConcurrency === 1 ? "串行" : `${effectiveConcurrency} 路并行`}
+                  </Tag>
+                ) : (
+                  <Tag color="orange">—</Tag>
                 )
               }
             />

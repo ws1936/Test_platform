@@ -1,13 +1,15 @@
 // Run Detail 页面：展示单次 Run 的概览、Failure Analysis、Timeline 与 Result Evidence Drawer。
 
 import {
+  CloudDownloadOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
-import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Col, Descriptions, Row, Space, Statistic, Tag, Typography } from "antd";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Alert, App, Button, Card, Col, Descriptions, Dropdown, Row, Space, Statistic, Tag, Typography } from "antd";
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { getErrorMessage } from "../../api/client";
 import { queryKeys } from "../../api/queryKeys";
 import { runsApi } from "../../api/runs";
 import {
@@ -60,6 +62,16 @@ export default function WorkspaceReportDetailPage() {
     enabled: Boolean(runId),
   });
   const [drawerResultId, setDrawerResultId] = useState<string | null>(null);
+
+  // F015：导出报告（JSON / HTML）。一个 useMutation 复用，format 作为变量。
+  const { message } = App.useApp();
+  const exportMutation = useMutation({
+    mutationFn: (format: "json" | "html") => runsApi.exportReport(runId, format),
+    onSuccess: (_void, format) => {
+      message.success(`已下载 ${format.toUpperCase()} 报告`);
+    },
+    onError: (error) => message.error(getErrorMessage(error, "导出失败")),
+  });
 
   if (runQuery.isLoading) return <LoadingBlock rows={6} />;
   if (runQuery.isError) {
@@ -135,6 +147,35 @@ export default function WorkspaceReportDetailPage() {
             >
               再次执行
             </Button>
+            {/* F015：报告导出。Dropdown 选 JSON / HTML，走 runsApi.exportReport */}
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "json",
+                    label: "导出 JSON（完整快照）",
+                    disabled: exportMutation.isPending,
+                  },
+                  {
+                    key: "html",
+                    label: "导出 HTML（自包含报告）",
+                    disabled: exportMutation.isPending,
+                  },
+                ],
+                onClick: ({ key }) => {
+                  if (key === "json" || key === "html") {
+                    exportMutation.mutate(key);
+                  }
+                },
+              }}
+            >
+              <Button
+                icon={<CloudDownloadOutlined />}
+                loading={exportMutation.isPending}
+              >
+                导出报告
+              </Button>
+            </Dropdown>
             <Button
               icon={<ReloadOutlined />}
               onClick={() => {

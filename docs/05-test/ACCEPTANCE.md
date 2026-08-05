@@ -111,11 +111,62 @@ MVP 完成时必须满足：
 - [ ] `response_snapshot.headers` 被 `_sanitize_headers` 二次脱敏：`Authorization` / `Cookie` / `Set-Cookie` / `x-api-key` 等不出现在导出中。
 - [ ] `request_snapshot.headers` 保留 F010 在持久化时已脱敏的产物，F015 不再二次处理。
 - [ ] HTML 表格不展示 request/response/assertion 明文，仅 case_name / case_method / case_path / elapsed_ms / error_message。
-- [ ] HTML 中所有用户控制字段经 `esc()` 转义（XSS 防护）：将特殊字符替换为对应的 HTML entity。
+- [ ] HTML 中所有用户控制字段经 `esc()` 转义（XSS 防护）：`<` / `>` / `&` / `"` 分别转义为对应的 HTML entity。
 - [ ] 端点鉴权：未登录 401；非 owner 非 admin 403；run 不存在 404。
 - [ ] 不新增业务错误码（沿用 FastAPI 标准 422/404/403/401）。
 - [ ] 零 DB Migration、零 Alembic 改动、零新依赖（requirements.txt 不变）。
 - [ ] 全量回归：`pytest src/tests/` 通过，0 回归。
+
+### 4.7 前端 API 测试页面（F016）
+
+**注**：F016 不引入前端自动化测试（KISS + 零基础设施）。验收以"页面 / 路由 / 操作"清单为准，配合 `npm run check` 编译闸门。
+
+**路由 / 页面**
+- [ ] `/login` 登录页 + token 持久化 + 401 自动 refresh
+- [ ] `/dashboard` 含 4 个 Recent*Panel + 指标卡
+- [ ] `/projects` 项目列表 + 创建 / 编辑模态框
+- [ ] `/projects/:projectId/workspace/overview` 项目概览
+- [ ] `/projects/:projectId/workspace/environment` 环境 CRUD + 默认环境切换
+- [ ] `/projects/:projectId/workspace/suite` + `/:suiteId` 集合 CRUD + 顺序调整
+- [ ] `/projects/:projectId/workspace/case` + `/new` + `/:caseId` 用例 CRUD + 启用 / 禁用
+- [ ] `/projects/:projectId/workspace/run` 执行中心（包含 F014 并发度 Slider）
+- [ ] `/projects/:projectId/workspace/report` + `/:runId` + `result/:resultId` 报告详情
+- [ ] `/projects/:projectId/workspace/import` + `/:suiteId` OpenAPI 导入（F012/F013）
+- [ ] `/projects/:projectId/workspace/information` 项目信息
+- [ ] `/admin/users` + `/admin/roles` 管理员页（AdminRoute 守卫）
+- [ ] `/403` / `*`（catch-all 404）系统错误页
+
+**P1 集成点**
+- [ ] F014：执行中心 `Slider + InputNumber` 选择并发度（1-64），透传到 `POST /projects/{pid}/runs?concurrency=N`，后端校验 422 与乱值兜底
+- [ ] F015：报告详情「导出报告」Dropdown 选 JSON / HTML，axios blob 下载，不在 URL 里塞 token
+
+**鉴权**
+- [ ] 未登录访问受保护路由 → 跳 `/login`
+- [ ] 非 admin 访问 `/admin/*` → 跳 `/403`
+- [ ] 命中不存在的 URL → 跳 `/404`
+
+**状态管理 / 工具**
+- [ ] TanStack Query 覆盖所有 server state（projects / environments / suites / cases / runs / reports / users / roles）
+- [ ] Zustand 仅 `store/auth.ts` 管 token + user
+- [ ] queryKeys factory 统一管理 cache key；mutation 后 `invalidateQueries` 相关 key
+
+**编译闸门**
+- [ ] `npm run lint` 0 errors / 0 warnings（`--max-warnings 0`）
+- [ ] `npm run typecheck` 0 errors
+- [ ] `npm run build` 成功生成 `dist/`
+
+**文档**
+- [ ] `frontend/README.md` 含启动 / 目录 / 状态管理分工 / 鉴权约定 / P1 集成点
+
+**边界（明确不做）**
+- [ ] 零前端自动化测试（Cypress / Playwright / Vitest+RTL）
+- [ ] 零 i18n 国际化
+- [ ] 零暗色模式
+- [ ] 零 WebSocket 实时推送
+- [ ] 零 PWA / 离线
+- [ ] 零新 UI 库（已锁 Ant Design）
+- [ ] 零 Redux / MobX（已选 Zustand）
+- [ ] 后端 `pytest src/tests/` 仍 424/424 全绿（F016 改动仅前端）
 
 ---
 

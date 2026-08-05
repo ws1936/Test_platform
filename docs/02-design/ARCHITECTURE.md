@@ -173,7 +173,64 @@
 
 ---
 
-## 6. 技术选型
+## 6. 前端工作区（F016）
+
+**选型**（已锁定，呼应 AI_RULES §4.4）：
+
+| 层 | 库 | 职责 |
+|----|----|------|
+| UI 框架 | React 18 + Vite 5 + TypeScript 5.5 | SPA + HMR |
+| 路由 | React Router 6 | 14 个路由（含 6 个 legacy 重定向） |
+| UI 库 | Ant Design 5 + Ant Design Icons | 组件库（Form / Table / Drawer / Modal / Tabs） |
+| 服务端状态 | TanStack Query 5 | 列表 / 详情 / mutation；`queryKeys` factory 统一管理 |
+| 客户端状态 | Zustand 4 | 仅 `store/auth.ts`（token + user） |
+| HTTP | Axios 1.7 | 拦截器：401 自动 refresh + Bearer 注入 |
+| 表单 | React Hook Form 7 | 5 个 FormModal + CaseEditor |
+
+**路由架构**：
+
+```text
+/login                                                    公开
+/dashboard                                                ProtectedRoute
+/projects                                                 ProtectedRoute
+/projects/:projectId/workspace/                           ProtectedRoute (ProjectWorkspaceLayout)
+├── overview                                              项目概览
+├── environment                                           环境 CRUD
+├── suite / suite/:suiteId                                集合 CRUD + 顺序
+├── case / case/new / case/:caseId                        用例 CRUD + 启用/禁用
+├── run                                                   执行中心（含 F014 concurrency）
+├── report / report/:runId / result/:resultId             报告详情 + F015 导出
+├── import / import/:suiteId                              OpenAPI 导入（F012/F013）
+└── information                                           项目信息
+/admin/users, /admin/roles                                AdminRoute 守卫
+/403, * (catch-all)                                      系统错误页
+```
+
+**鉴权**：
+* `ProtectedRoute` 包裹 `<AppShell>` 拦截未登录 → `/login`
+* `AdminRoute` 包裹 admin 页 → 非 admin 跳 `/403`
+* Axios 拦截器：401 自动用 refresh token 续签；续签失败跳 `/login`
+* Token 存 `localStorage`（`access_token` / `refresh_token`）
+
+**P1 集成点**：
+
+| Feature | 前端入口 | 后端 API |
+|---------|---------|---------|
+| F012 OpenAPI 导入 | `WorkspaceImportIndex` / `WorkspaceImport` | `POST /projects/{pid}/suites/{sid}/import/openapi?dry_run=true` |
+| F013 批量导入 | 同上 + `?batch=true` + `documents[]` | 同上 |
+| F014 并发度 | `WorkspaceRun` Slider + InputNumber（1-64） | `POST /projects/{pid}/runs?concurrency=N` |
+| F015 报告导出 | `WorkspaceReportDetail` 「导出报告」Dropdown | `GET /runs/{run_id}/export?format=json\|html`（axios blob 下载） |
+
+**不做**：
+* 不引入前端自动化测试（Cypress / Playwright / Vitest+RTL）—— KISS
+* 不引入 i18n / 暗色模式 / WebSocket / PWA / 离线
+* 不切 UI 库（已锁 Ant Design）；不引入 Redux / MobX（已选 Zustand）
+
+详见 `frontend/README.md`。
+
+---
+
+## 7. 技术选型
 
 | 技术 | 用途 | 说明 |
 |------|------|------|
@@ -185,11 +242,14 @@
 | PostgreSQL | 主数据库 | 持久化和 JSON 支持 |
 | httpx | HTTP 客户端 | 执行被测 API |
 | pytest | 测试 | 单元测试和 API 测试 |
-| React + Vite | 前端 | 管理界面 |
+| React 18 + Vite 5 | 前端 | 管理界面（F016） |
+| Ant Design 5 | 前端 UI 库 | 组件库（F016） |
+| TanStack Query 5 | 前端 server state | 列表 / 详情 / mutation（F016） |
+| Zustand 4 | 前端 client state | 仅 `store/auth.ts`（F016） |
 
 ---
 
-## 7. 当前不引入
+## 8. 当前不引入
 
 | 能力 | 暂缓原因 |
 |------|----------|
@@ -198,3 +258,4 @@
 | AI / RAG | 不属于 API 测试最小闭环 |
 | 定时任务 | 先完成手动执行闭环 |
 | Allure 服务化 | 先做平台内置报告 |
+| 前端自动化测试 | KISS：项目不引入 vitest+RTL / Cypress / Playwright |
