@@ -179,7 +179,7 @@ F015 选择 **JSON + 自带 HTML 模板**，不引入 Allure / jinja2 / mako / w
 
 * **JSON**：包含 Run 元信息 + 每条 Result 的 `request_snapshot` /
   `response_snapshot` / `assertions_snapshot`（后两者让用户离线复现
-  请求/响应/断言，呼应 PRD §5.8 “结果详情”）。
+  请求/响应/断言，呼应 PRD §5.8 "结果详情"）。
 * **HTML**：纯 Python f-string + 行内 CSS + `esc()` 转义；只展示摘要
   （状态 / 路径 / 耗时 / error_message），不塞 request/response 明文，
   避免 HTML 体积爆炸 + XSS 风险。
@@ -198,6 +198,125 @@ F015 选择 **JSON + 自带 HTML 模板**，不引入 Allure / jinja2 / mako / w
 - 文档同步：`docs/01-product/F015_SPEC.md` 设计稿；`docs/05-test/ACCEPTANCE.md`
   §F015 验收条目；`docs/03-api/OPENAPI.yaml` `/runs/{run_id}/export` 端点。
 - 后续 Allure 服务化（需独立 ADR）不在 F015 范围。
+
+---
+
+## ADR-008：F021 SchemaModel 数据契约 + 复合 schema 归一策略
+
+- 状态：Accepted
+- 日期：2026-08-20
+
+### 背景
+
+当前 F012 parser（`src/app/domain/openapi_importer/parser.py`）的输出
+是 `Operation` + `ParsedSpec`，仅提取 `example` / `description` /
+operation 级 `parameters` 与 `requestBody.content."application/json".example`。
+这个最小信息量足以支撑 F012 的"1 条 happy path"用例生成，但**不足以**
+驱动更深层的"自动测试生成"链路：
+
+* F022 Test Design Engine 需要知道每个字段的 `type / format / minimum /
+  maximum / minLength / maxLength / pattern / enum / required / default`，
+  才能产出"边界值"、"enum 全覆盖"、"format 校验失败"等 `TestIntent`。
+* F023 Test Generator 需要响应 schema 的 `required` 字段列表，才能产出
+  `json_path` 断言（目前只有默认 `status_code` 一条）。
+* F021 必须**向后兼容**现有 F012/F013 契约：F012 老路径产出 1 条 happy path
+  + 1 个 status_code 断言必须**字节级一致**。
+
+同时有两个不兼容增强必须决策：
+
+1. **`$ref` 完整解析 vs 仅取首个分支**：
+   F012 parser 当前实现的是"取首个分支"的简化版（`_resolve_refs` 仅
+   处理 `$ref` 占满整个 dict 的形态，递归走 `components.schemas`）。当
+   SchemaModel 需要 `type/format/enum/required` 完整信息时，"取首个分支"
+   会丢失其他分支的语义；"完整递归解析"则会引入递归深度控制、循环引用
+   检测等复杂度。
+2. **oneOf / anyOf / allOf 归一策略**：
+   OpenAPI 复合 schema 三种形态语义差异极大（`oneOf` 互斥、`anyOf` 至少
+   一、`allOf` 全合并），parser 当前**直接忽略**（fall back 到原始 dict）。
+   F021 必须给出明确归一规则。
+
+### 决策
+
+F021 引入 **`SchemaModel`** 数据契约，作为 parser 与下游 Test Design /
+Generator 之间的稳定中间表示。三条核心决策如下：
+
+**决策 1（OpenAPI 版本）：保持 3.x 单版本，不兼容 Swagger 2.0。**
+
+* parser 现状 `version.startswith("3.")` 继续生效；Swagger 2.0（`swagger: "2.0"`）
+  显式抛 `OpenApiParseError`。
+* 后续若需 2.0 兼容，必须独立 ADR 决议；当前**不做**。
+
+**决策 2（`$ref` 解析策略）：完整递归解析，递归深度上限 `MAX_REF_DEPTH = 10`，循环引用检测。**
+
+* 解析顺序：先扁平化所有 `$ref`（resolve 链：`#/components/schemas/X` →
+  `components.schemas["X"]` → 继续 resolve 内部 `$ref`），然后构造
+  SchemaModel 节点。
+* 深度上限：超过 `MAX_REF_DEPTH` 抛 `OpenApiParseError("ref depth exceeded")`。
+* 循环检测：用 `id(node)` 集合，命中已访问节点 → 用占位 `RefCycle` 标记
+  并停止该分支递归（**不抛异常**，因为 OpenAPI 规范允许循环结构用于递归类型）。
+* 与 F012 的兼容性：F012 老路径**仅消费** SchemaModel 的
+  `example / description / operation_id` 等"语义保持"字段，新字段缺失
+  时降级为 `None / [] / {}`，确保 F012 happy path 行为**字节级不变**。
+
+**决策 3（oneOf / anyOf / allOf 归一）：取首个分支 + `unresolved_branches` 字段标注。**
+
+* `oneOf` / `anyOf`：取列表中**第一个** dict 作为归一目标；其余分支写入
+  `unresolved_branches: list[SchemaModel]`，供下游 UI 提示"F021 未完整建模此复合类型"。
+* `allOf`：把所有分支 **merge**（浅合并：同名字段后者覆盖前者；`type` 冲突
+  抛 `OpenApiParseError`；`required` 数组合并去重）。
+* 默认行为：**取首个分支**（与 F012 parser 现状"取首个分支"的简化语义
+  **向前兼容**，不引入新错误码；仅在 `unresolved_branches` 非空时通过日志
+  WARNING 告知）。
+* 后续如需"完整分支展开"，必须独立 ADR 决议。
+
+**决策 4（依赖）：不引入 jsonschema / openapi-spec-validator 等第三方库。**
+
+* 解析、约束、归一全部走 stdlib + Pydantic v2 + 类型标注；
+* 沿用 F012 的 `_resolve_refs` 风格扩展（纯函数递归）。
+* 第三方 schema 库带来的学习成本 / 版本耦合 / 冗余字段**不值得**。
+
+**决策 5（数据契约 SchemaModel）：Pydantic v2 `BaseModel`，`extra="forbid"`。**
+
+* 顶层节点：`SchemaModel(type, format, enum, const, default, description, ref, ...)`
+* 复合节点：`one_of: list[SchemaModel]` / `any_of: list[SchemaModel]` /
+  `all_of: list[SchemaModel]` / `unresolved_branches: list[SchemaModel]`
+* 数值节点：`minimum, maximum, exclusive_minimum, exclusive_maximum, multiple_of`
+* 字符串节点：`min_length, max_length, pattern`
+* 数组节点：`min_items, max_items, unique_items, items: SchemaModel`
+* 对象节点：`properties: dict[str, SchemaModel]`, `required: list[str]`,
+  `additional_properties: bool | SchemaModel`
+
+### 影响
+
+- **新增模块**：`src/app/domain/openapi_importer/schema_model.py`（数据契约）
+  + `src/app/domain/openapi_importer/schema_analyzer.py`（分析器实现）；
+  既有 `parser.py` **不动**。
+- **向后兼容**：F012 parser 输出 `Operation` / `ParsedSpec` 字段保持；
+  SchemaModel 是**增量可选消费**——老路径不读 SchemaModel，新路径按需
+  `analyze_operation(op) -> SchemaModel` 调用。
+- **零新依赖**：纯 stdlib + Pydantic v2（已是项目栈）。
+- **零 DB Migration / 零 model.py 改动**。
+- **零新错误码**：解析失败沿用 F012 的 `OPENAPI_PARSE_ERROR`（已在 400 范式）；
+  仅在 `MAX_REF_DEPTH` 越界时复用同一错误码 + `details: {reason: "ref_depth"}`。
+- **日志脱敏**：WARNING 日志只输出 `doc_index / source_tag / unresolved_branches count`，
+  **不打印** spec body / 认证头（与 F012 parser 一致）。
+- **文档同步**：`docs/01-product/F021_SPEC.md` 设计稿；
+  `docs/05-test/ACCEPTANCE.md` §F021 验收条目；
+  `docs/03-api/OPENAPI.yaml` 不变（SchemaModel 是内部数据契约，非 API 暴露）；
+  `docs/01-product/BACKLOG.md` F021 状态 Todo → Doing → Done。
+- **测试**：新增 `src/tests/test_schema_analyzer.py`（≥15 用例），覆盖
+  $ref 深度 / 循环 / oneOf / anyOf / allOf / required / enum / boundary /
+  format / 向后兼容 F012 等。
+- **回归**：F012/F013 现有 32 个测试**字节级**不变。
+
+### 备选方案（已否决）
+
+* **方案 A（不引入 SchemaModel，直接在 Operation 上加字段）**：会污染
+  F012 既有数据契约，破坏"零修改 parser"承诺。
+* **方案 B（用 jsonschema 库做归一）**：依赖膨胀、版本耦合、对 OpenAPI
+  复合 schema 语义无增强。
+* **方案 C（完整展开 oneOf/anyOf/allOf 所有分支）**：复杂度爆炸（N 个
+  oneOf 分支 × M 个 anyOf 分支），与 AI_RULES §2.3 KISS 冲突。
 
 ---
 
@@ -220,4 +339,3 @@ F015 选择 **JSON + 自带 HTML 模板**，不引入 Allure / jinja2 / mako / w
 ### 影响
 
 带来的收益、代价和后续影响。
-```

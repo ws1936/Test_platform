@@ -1,4 +1,12 @@
-"""F012 OpenAPI spec parser (std lib only)."""
+"""F012 OpenAPI spec parser (std lib only).
+
+F021 addition: ``Operation`` carries three OPTIONAL raw_* fields
+(``raw_parameters`` / ``raw_request_body`` / ``raw_responses``) which
+the F021 ``SchemaAnalyzer`` consumes to build a deep ``EndpointSchema``.
+When the parser is constructed via test fixtures without these fields
+populated (i.e. all three default to ``None`` / empty), the dataclass
+construction is byte-for-byte unchanged and all F012 tests pass.
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -20,6 +28,11 @@ class Operation:
     request_body: Optional[Any] = None
     request_body_type: str = "none"
     tags: list[str] = field(default_factory=list)
+
+    # ---- F021 additions (all optional; backward-compatible) -------------
+    raw_parameters: Optional[list[dict[str, Any]]] = field(default=None)
+    raw_request_body: Optional[dict[str, Any]] = field(default=None)
+    raw_responses: Optional[dict[str, dict[str, Any]]] = field(default=None)
 
 
 @dataclass
@@ -107,6 +120,7 @@ class OpenApiSpecParser:
                     method=method.upper(),
                     path=full_path,
                     op=resolved_op,
+                    raw_op=op,  # F021: pass through original (pre-resolve) operation
                 ))
 
         return ParsedSpec(
@@ -132,7 +146,11 @@ class OpenApiSpecParser:
         return obj
 
     def _build_operation(
-        self, method: str, path: str, op: dict[str, Any]
+        self,
+        method: str,
+        path: str,
+        op: dict[str, Any],
+        raw_op: dict[str, Any],
     ) -> Operation:
         op_id = op.get("operationId")
         summary = op.get("summary") or op.get("description") or f"{method} {path}"
@@ -168,6 +186,13 @@ class OpenApiSpecParser:
                     body = example
                     body_type = "json"
 
+        # ---- F021: collect raw_ fields from the ORIGINAL op ----
+        raw_params = raw_op.get("parameters")
+        raw_rb = raw_op.get("requestBody")
+        raw_resp = raw_op.get("responses")
+        # These are best-effort: missing fields just default to None and
+        # ``SchemaAnalyzer`` will degrade gracefully.
+
         return Operation(
             operation_id=op_id,
             method=method,
@@ -178,4 +203,7 @@ class OpenApiSpecParser:
             request_body=body,
             request_body_type=body_type,
             tags=op.get("tags") or [],
+            raw_parameters=raw_params if isinstance(raw_params, list) else None,
+            raw_request_body=raw_rb if isinstance(raw_rb, dict) else None,
+            raw_responses=raw_resp if isinstance(raw_resp, dict) else None,
         )
