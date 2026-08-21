@@ -8,3 +8,23 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local secrets
+.env
+
+# SQLite dev DB
+*.db
+*.db.bak
+
+# Runtime logs
+logs/
+
+# Local scratch / debug notes
+.scratch/
+.task_progress.md
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
