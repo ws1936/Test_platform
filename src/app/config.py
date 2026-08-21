@@ -74,6 +74,29 @@ class Settings(BaseSettings):
     # ``OPENAPI_BATCH_LIMIT_EXCEEDED`` rather than silently truncating.
     OPENAPI_BATCH_MAX_OPS_PER_DOC: int = 50
 
+    # ---- F022 Test Design Engine ----
+    # Per-strategy toggles. ``happy_path`` is forced True at engine init
+    # time (F022_SPEC §5.2.1) and cannot be disabled via config.
+    strategy_happy_path: bool = True
+    strategy_required_field_missing: bool = False
+    strategy_enum_coverage: bool = False
+    strategy_boundary_min_max: bool = False
+    strategy_format_invalid: bool = False
+    strategy_auth_missing: bool = False
+
+    # Hard upper bound for intents produced per single operation
+    # (F022_SPEC §2 Q5 / F022_PRECHECK §2.1). Validated in [1, 100].
+    generator_max_intents_per_operation: int = 20
+
+    # Per-strategy quotas (F022_SPEC §2 Q6 / F022_PRECHECK §2.1).
+    # Each must be <= ``generator_max_intents_per_operation`` (validated
+    # in ``validate_strategy_caps`` at startup).
+    strategy_required_field_missing_max_per_op: int = 5
+    strategy_enum_coverage_max_per_op: int = 10
+    strategy_boundary_min_max_max_per_op: int = 10
+    strategy_format_invalid_max_per_op: int = 5
+    strategy_auth_missing_max_per_op: int = 1
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -105,3 +128,37 @@ def validate_secrets() -> None:
             "JWT_SECRET_KEY must be at least 32 characters long. "
             f"Current length: {len(settings.JWT_SECRET_KEY)}.",
         )
+
+
+def validate_strategy_caps() -> None:
+    """Validate F022 strategy quotas at startup.
+
+    Per F022_PRECHECK §2.4 / F022_SPEC §6.1: each per-strategy cap must
+    not exceed the global ``generator_max_intents_per_operation``, and
+    the global cap must lie in ``[1, 100]``.
+
+    Halts startup on violation rather than silently truncating.
+    """
+    cap = settings.generator_max_intents_per_operation
+    if not (1 <= cap <= 100):
+        raise ValueError(
+            f"generator_max_intents_per_operation must be in [1, 100], "
+            f"got {cap}"
+        )
+    per_strategy_caps = {
+        "required_field_missing": settings.strategy_required_field_missing_max_per_op,
+        "enum_coverage": settings.strategy_enum_coverage_max_per_op,
+        "boundary_min_max": settings.strategy_boundary_min_max_max_per_op,
+        "format_invalid": settings.strategy_format_invalid_max_per_op,
+        "auth_missing": settings.strategy_auth_missing_max_per_op,
+    }
+    for name, value in per_strategy_caps.items():
+        if value < 1:
+            raise ValueError(
+                f"strategy_{name}_max_per_op must be >= 1, got {value}"
+            )
+        if value > cap:
+            raise ValueError(
+                f"strategy_{name}_max_per_op ({value}) must be <= "
+                f"generator_max_intents_per_operation ({cap})"
+            )
