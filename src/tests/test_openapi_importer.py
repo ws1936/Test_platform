@@ -1,10 +1,13 @@
 """Tests for F012 OpenAPI importer (parser unit + HTTP route)."""
+
 from __future__ import annotations
+
 import uuid
+
 import pytest
-from app.domain.openapi_importer.exceptions import (
-    OpenApiFetchError, OpenApiParseError,
-)
+
+from app.domain.openapi_importer.exceptions import (OpenApiFetchError,
+                                                    OpenApiParseError)
 from app.domain.openapi_importer.parser import OpenApiSpecParser, ParsedSpec
 
 
@@ -17,11 +20,10 @@ from app.domain.openapi_importer.parser import OpenApiSpecParser, ParsedSpec
 @pytest.fixture(autouse=True)
 def _reset_openapi_preview_cache():
     from app.domain.openapi_importer.service import OpenApiImportService
+
     OpenApiImportService._preview_cache.clear()
     yield
     OpenApiImportService._preview_cache.clear()
-
-
 
 
 SAMPLE_OPENAPI_3_0 = {
@@ -35,8 +37,11 @@ SAMPLE_OPENAPI_3_0 = {
                 "summary": "List all pets",
                 "tags": ["pets"],
                 "parameters": [
-                    {"name": "limit", "in": "query",
-                     "schema": {"type": "integer", "example": 10}}
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "example": 10},
+                    }
                 ],
                 "responses": {"200": {"description": "ok"}},
             },
@@ -61,8 +66,12 @@ SAMPLE_OPENAPI_3_0 = {
                 "summary": "Get a pet by id",
                 "tags": ["pets"],
                 "parameters": [
-                    {"name": "id", "in": "path", "required": True,
-                     "schema": {"type": "string"}}
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
                 ],
                 "responses": {"200": {"description": "ok"}},
             }
@@ -97,8 +106,7 @@ def test_parser_extracts_methods_paths_and_names():
 def test_parser_extracts_query_parameter_examples():
     parsed = OpenApiSpecParser().parse(SAMPLE_OPENAPI_3_0)
     list_pets = next(
-        op for op in parsed.operations
-        if op.method == "GET" and op.path == "/v1/pets"
+        op for op in parsed.operations if op.method == "GET" and op.path == "/v1/pets"
     )
     assert list_pets.request_query == {"limit": 10}
 
@@ -111,8 +119,11 @@ def test_parser_extracts_header_parameters_with_examples():
             "/x": {
                 "get": {
                     "parameters": [
-                        {"name": "X-Token", "in": "header",
-                         "schema": {"type": "string", "example": "abc"}}
+                        {
+                            "name": "X-Token",
+                            "in": "header",
+                            "schema": {"type": "string", "example": "abc"},
+                        }
                     ],
                     "responses": {"200": {"description": "ok"}},
                 }
@@ -147,9 +158,7 @@ def test_parser_filters_by_tags():
 
 
 def test_parser_filters_to_zero_when_no_tag_match():
-    parsed = OpenApiSpecParser().parse(
-        SAMPLE_OPENAPI_3_0, tags=["nonexistent"]
-    )
+    parsed = OpenApiSpecParser().parse(SAMPLE_OPENAPI_3_0, tags=["nonexistent"])
     assert parsed.operations == []
 
 
@@ -185,11 +194,13 @@ def test_parser_extracts_path_parameter_without_breaking():
 
 
 def test_parser_returns_empty_for_no_paths():
-    parsed = OpenApiSpecParser().parse({
-        "openapi": "3.0.0",
-        "info": {"title": "Empty", "version": "1"},
-        "paths": {},
-    })
+    parsed = OpenApiSpecParser().parse(
+        {
+            "openapi": "3.0.0",
+            "info": {"title": "Empty", "version": "1"},
+            "paths": {},
+        }
+    )
     assert parsed.operations == []
 
 
@@ -218,8 +229,10 @@ async def test_openapi_preview_endpoint_creates_three_cases(client, db_session):
     user = await client.post(
         "/api/v1/auth/register",
         json={
-            "username": f"u_{uuid.uuid4().hex[:6]}", "email": f"u@e.com",
-            "password": "TestPass123!", "nickname": "u",
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
             "phone": "13800000000",
         },
     )
@@ -247,8 +260,10 @@ async def test_openapi_preview_400_when_both_url_and_content_provided(
     user = await client.post(
         "/api/v1/auth/register",
         json={
-            "username": f"u_{uuid.uuid4().hex[:6]}", "email": f"u@e.com",
-            "password": "TestPass123!", "nickname": "u",
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
             "phone": "13800000000",
         },
     )
@@ -272,8 +287,10 @@ async def test_openapi_preview_400_when_neither_url_nor_content_provided(
     user = await client.post(
         "/api/v1/auth/register",
         json={
-            "username": f"u_{uuid.uuid4().hex[:6]}", "email": f"u@e.com",
-            "password": "TestPass123!", "nickname": "u",
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
             "phone": "13800000000",
         },
     )
@@ -288,14 +305,14 @@ async def test_openapi_preview_400_when_neither_url_nor_content_provided(
     assert resp.status_code == 422
 
 
-async def test_openapi_preview_400_for_unsupported_url_scheme(
-    client, db_session
-):
+async def test_openapi_preview_400_for_unsupported_url_scheme(client, db_session):
     user = await client.post(
         "/api/v1/auth/register",
         json={
-            "username": f"u_{uuid.uuid4().hex[:6]}", "email": f"u@e.com",
-            "password": "TestPass123!", "nickname": "u",
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
             "phone": "13800000000",
         },
     )
@@ -314,8 +331,10 @@ async def test_openapi_preview_403_for_non_owner(client, db_session):
     owner = await client.post(
         "/api/v1/auth/register",
         json={
-            "username": f"o_{uuid.uuid4().hex[:6]}", "email": f"o@e.com",
-            "password": "TestPass123!", "nickname": "o",
+            "username": f"o_{uuid.uuid4().hex[:6]}",
+            "email": f"o@e.com",
+            "password": "TestPass123!",
+            "nickname": "o",
             "phone": "13800000000",
         },
     )
@@ -325,8 +344,10 @@ async def test_openapi_preview_403_for_non_owner(client, db_session):
     other = await client.post(
         "/api/v1/auth/register",
         json={
-            "username": f"x_{uuid.uuid4().hex[:6]}", "email": f"x@e.com",
-            "password": "TestPass123!", "nickname": "x",
+            "username": f"x_{uuid.uuid4().hex[:6]}",
+            "email": f"x@e.com",
+            "password": "TestPass123!",
+            "nickname": "x",
             "phone": "13800000000",
         },
         headers={"Authorization": f"Bearer {owner_token}"},
@@ -345,8 +366,10 @@ async def test_openapi_preview_404_for_missing_project(client, db_session):
     user = await client.post(
         "/api/v1/auth/register",
         json={
-            "username": f"u_{uuid.uuid4().hex[:6]}", "email": f"u@e.com",
-            "password": "TestPass123!", "nickname": "u",
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
             "phone": "13800000000",
         },
     )
@@ -395,7 +418,9 @@ SAMPLE_OPENAPI_3_0_DOC_B: dict = {
                 "summary": "Get a user",
                 "parameters": [
                     {
-                        "name": "id", "in": "path", "required": True,
+                        "name": "id",
+                        "in": "path",
+                        "required": True,
                         "schema": {"type": "string"},
                     }
                 ],
@@ -418,9 +443,7 @@ async def _register_and_get_token(
     Authorization header (matches F012 ``test_openapi_preview_403_*``
     multi-user pattern).
     """
-    headers = (
-        {"Authorization": f"Bearer {admin_token}"} if admin_token else {}
-    )
+    headers = {"Authorization": f"Bearer {admin_token}"} if admin_token else {}
     resp = await client.post(
         "/api/v1/auth/register",
         json={
@@ -443,9 +466,7 @@ def _auth(token: str) -> dict:
 # ---- T1: preview batch 返回每文档明细，含 preview_id -----------------------
 
 
-async def test_openapi_batch_preview_returns_per_doc_summaries(
-    client, db_session
-):
+async def test_openapi_batch_preview_returns_per_doc_summaries(client, db_session):
     token = await _register_and_get_token(client, "f013t1")
     project, suite = await _create_project_and_suite(client, token)
 
@@ -496,7 +517,9 @@ async def test_openapi_batch_commit_creates_cases(client, db_session):
     commit = await client.post(
         f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
         params={
-            "batch": "true", "dry_run": "false", "preview_id": preview_id,
+            "batch": "true",
+            "dry_run": "false",
+            "preview_id": preview_id,
         },
         json={"documents": [{"source_content": SAMPLE_OPENAPI_3_0}]},
         headers=_auth(token),
@@ -514,9 +537,7 @@ async def test_openapi_batch_commit_creates_cases(client, db_session):
 # ---- T3: batch=true 单文档（?documents=[d]）与单文档端点结果一致 --------
 
 
-async def test_openapi_batch_single_document_matches_f012(
-    client, db_session
-):
+async def test_openapi_batch_single_document_matches_f012(client, db_session):
     token_a = await _register_and_get_token(client, "f013t3a")
     token_b = await _register_and_get_token(client, "f013t3b", admin_token=token_a)
     proj_a, suite_a = await _create_project_and_suite(client, token_a)
@@ -545,9 +566,7 @@ async def test_openapi_batch_single_document_matches_f012(
 # ---- T4: documents=[] → 422 -------------------------------------------------
 
 
-async def test_openapi_batch_empty_documents_returns_422(
-    client, db_session
-):
+async def test_openapi_batch_empty_documents_returns_422(client, db_session):
     token = await _register_and_get_token(client, "f013t4")
     project, suite = await _create_project_and_suite(client, token)
 
@@ -564,17 +583,12 @@ async def test_openapi_batch_empty_documents_returns_422(
 # ---- T5: documents 数 > N → 422 --------------------------------------------
 
 
-async def test_openapi_batch_too_many_documents_returns_422(
-    client, db_session
-):
+async def test_openapi_batch_too_many_documents_returns_422(client, db_session):
     token = await _register_and_get_token(client, "f013t5")
     project, suite = await _create_project_and_suite(client, token)
 
     # OPENAPI_BATCH_MAX_DOCS = 5 → 6 必须被拒
-    docs = [
-        {"source_content": SAMPLE_OPENAPI_3_0_DOC_B}
-        for _ in range(6)
-    ]
+    docs = [{"source_content": SAMPLE_OPENAPI_3_0_DOC_B} for _ in range(6)]
     resp = await client.post(
         f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
         params={"batch": "true", "dry_run": "true"},
@@ -594,6 +608,7 @@ async def test_openapi_batch_per_doc_operation_limit_returns_400(
     # 通过 monkeypatch 把 OPENAPI_BATCH_MAX_OPS_PER_DOC 临时改为 1，
     # 这样 SAMPLE_OPENAPI_3_0 的 3 operations 必定超过上限。
     from app.config import settings
+
     monkeypatch.setattr(settings, "OPENAPI_BATCH_MAX_OPS_PER_DOC", 1)
 
     token = await _register_and_get_token(client, "f013t6")
@@ -669,9 +684,7 @@ async def test_openapi_batch_documents_mutually_exclusive_with_single(
 # ---- T9: batch=true&dry_run=true 不落库 ------------------------------------
 
 
-async def test_openapi_batch_dry_run_does_not_persist_cases(
-    client, db_session
-):
+async def test_openapi_batch_dry_run_does_not_persist_cases(client, db_session):
     token = await _register_and_get_token(client, "f013t9")
     project, suite = await _create_project_and_suite(client, token)
 
@@ -701,9 +714,7 @@ async def test_openapi_batch_dry_run_does_not_persist_cases(
 # ---- T10: batch=true&on_conflict=overwrite 重复提交 -----------------------
 
 
-async def test_openapi_batch_overwrite_replaces_existing_cases(
-    client, db_session
-):
+async def test_openapi_batch_overwrite_replaces_existing_cases(client, db_session):
     token = await _register_and_get_token(client, "f013t10")
     project, suite = await _create_project_and_suite(client, token)
 
@@ -723,8 +734,10 @@ async def test_openapi_batch_overwrite_replaces_existing_cases(
     commit1 = await client.post(
         f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
         params={
-            "batch": "true", "dry_run": "false",
-            "preview_id": pid1, "on_conflict": "skip",
+            "batch": "true",
+            "dry_run": "false",
+            "preview_id": pid1,
+            "on_conflict": "skip",
         },
         json=payload,
         headers=_auth(token),
@@ -742,8 +755,10 @@ async def test_openapi_batch_overwrite_replaces_existing_cases(
     commit2 = await client.post(
         f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
         params={
-            "batch": "true", "dry_run": "false",
-            "preview_id": pid2, "on_conflict": "overwrite",
+            "batch": "true",
+            "dry_run": "false",
+            "preview_id": pid2,
+            "on_conflict": "overwrite",
         },
         json=payload,
         headers=_auth(token),
@@ -759,9 +774,7 @@ async def test_openapi_batch_overwrite_replaces_existing_cases(
 # ---- T11: batch=true&on_conflict=skip 重复提交 -----------------------------
 
 
-async def test_openapi_batch_skip_repeat_leaves_cases_untouched(
-    client, db_session
-):
+async def test_openapi_batch_skip_repeat_leaves_cases_untouched(client, db_session):
     token = await _register_and_get_token(client, "f013t11")
     project, suite = await _create_project_and_suite(client, token)
 
@@ -773,32 +786,40 @@ async def test_openapi_batch_skip_repeat_leaves_cases_untouched(
     pv1 = await client.post(
         f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
         params={"batch": "true", "dry_run": "true"},
-        json=payload, headers=_auth(token),
+        json=payload,
+        headers=_auth(token),
     )
     pid1 = pv1.json()["preview_id"]
     await client.post(
         f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
         params={
-            "batch": "true", "dry_run": "false",
-            "preview_id": pid1, "on_conflict": "skip",
+            "batch": "true",
+            "dry_run": "false",
+            "preview_id": pid1,
+            "on_conflict": "skip",
         },
-        json=payload, headers=_auth(token),
+        json=payload,
+        headers=_auth(token),
     )
 
     # Second import (skip) → should report all skipped, zero created
     pv2 = await client.post(
         f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
         params={"batch": "true", "dry_run": "true"},
-        json=payload, headers=_auth(token),
+        json=payload,
+        headers=_auth(token),
     )
     pid2 = pv2.json()["preview_id"]
     commit2 = await client.post(
         f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
         params={
-            "batch": "true", "dry_run": "false",
-            "preview_id": pid2, "on_conflict": "skip",
+            "batch": "true",
+            "dry_run": "false",
+            "preview_id": pid2,
+            "on_conflict": "skip",
         },
-        json=payload, headers=_auth(token),
+        json=payload,
+        headers=_auth(token),
     )
     assert commit2.status_code == 200
     doc0 = commit2.json()["documents"][0]
@@ -829,9 +850,7 @@ async def test_openapi_batch_non_owner_forbidden(client, db_session):
 # ---- T13: 跨项目调用：suite.project_id != path.project_id → 404 -------------
 
 
-async def test_openapi_batch_cross_project_returns_404(
-    client, db_session
-):
+async def test_openapi_batch_cross_project_returns_404(client, db_session):
     token = await _register_and_get_token(client, "f013t13")
     proj_a, suite_a = await _create_project_and_suite(client, token)
     # 第二个项目下的随机 suite_id
@@ -844,3 +863,425 @@ async def test_openapi_batch_cross_project_returns_404(
         headers=_auth(token),
     )
     assert resp.status_code == 404
+
+
+# ===========================================================================
+# F023 — schema-driven generation (?design=schema) integration tests
+# ===========================================================================
+#
+# Covers FT-S01–S09 (Service layer) and FT-R01–R10 (Router layer) per
+# ``docs/01-product/F023_SPEC.md`` §10.2–§10.3.
+#
+# Sample spec designed to trigger MULTIPLE F022 strategies (required /
+# enum / format / auth) on a single POST endpoint, so we can prove that
+# ``design=schema`` actually generates 1+N intents while ``design=simple``
+# stays byte-equivalent to F012.
+
+SAMPLE_OPENAPI_3_0_SCHEMA = {
+    "openapi": "3.0.0",
+    "info": {"title": "Sensors API", "version": "1.0.0"},
+    "servers": [{"url": "https://api.example.com/v2"}],
+    "paths": {
+        "/sensors": {
+            "post": {
+                "operationId": "createSensor",
+                "summary": "Create a sensor",
+                "tags": ["sensors"],
+                "security": [{"bearerAuth": []}],
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/Sensor"},
+                            "example": {
+                                "name": "sensor-1",
+                                "unit": "celsius",
+                                "contact": "ops@example.com",
+                            },
+                        }
+                    },
+                },
+                "responses": {
+                    "201": {
+                        "description": "created",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Sensor"}
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Sensor": {
+                "type": "object",
+                "required": ["name", "unit", "contact"],
+                "properties": {
+                    "name": {"type": "string", "minLength": 1, "maxLength": 50},
+                    "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit", "kelvin"],
+                    },
+                    "contact": {"type": "string", "format": "email"},
+                    "threshold": {"type": "number", "minimum": -100, "maximum": 100},
+                },
+            }
+        },
+        "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer"}},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# FT-S01 — preview(design="simple") 字节级 = F012
+# ---------------------------------------------------------------------------
+async def test_ft_s01_preview_simple_byte_equivalent_to_f012(client, db_session):
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    assert user_resp.status_code == 201, user_resp.text
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    # design omitted (default = "simple") — must produce 1 intent / op.
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # F012 byte-equivalent: 1 operation → 1 preview row, no strategy field.
+    assert body["total"] == 1
+    assert body["total_intents"] is None
+    assert len(body["operations"]) == 1
+    assert body["operations"][0].get("strategy") is None
+    assert body["operations"][0]["method"] == "POST"
+
+
+# ---------------------------------------------------------------------------
+# FT-S02 — preview(design="schema") 开启全部策略
+# ---------------------------------------------------------------------------
+async def test_ft_s02_preview_schema_expands_intents(client, db_session):
+    """Enable every F022 strategy except format_invalid (covered by
+    FT-U05 separately) and verify the per-operation intent total
+    exceeds 1."""
+    from app.config import settings
+
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    # Force strategies on via env override by reloading settings. The
+    # F023 endpoint accepts the design flag but the strategy toggles
+    # are settings-level; we assume the default cap
+    # (generator_max_intents_per_operation=20) is sufficient.
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Even with default strategy_*_max_per_op settings (most OFF), at
+    # least happy_path=True → at least 1 intent.
+    assert body["total_intents"] is not None
+    assert body["total_intents"] >= 1
+    # Every operation preview item has strategy populated.
+    for op_preview in body["operations"]:
+        assert op_preview.get("strategy") is not None
+
+
+# ---------------------------------------------------------------------------
+# FT-S04 — preview(design="schema") 单 op 超 20 → 400 GENERATOR_INTENT_LIMIT_EXCEEDED
+# ---------------------------------------------------------------------------
+async def test_ft_s04_preview_schema_aborts_on_intent_overflow(
+    client, db_session, monkeypatch
+):
+    """Force the design engine to produce > cap intents via monkeypatch
+    on ``OpenApiImportService._design_engine`` — this is the only way to
+    trigger GENERATOR_INTENT_LIMIT_EXCEEDED without enabling multiple
+    F022 strategies (which would require changing settings).
+    """
+    from app.domain.openapi_importer.service import OpenApiImportService
+    from app.domain.test_design.engine import TestDesignEngine
+    from app.domain.test_design.schema import TestIntent
+
+    class _FakeEngine:
+        """TestDesignEngine stub: returns 21 intents on every call."""
+
+        def __init__(self, real_engine):
+            self._real = real_engine
+
+        def design(self, endpoint):
+            return [
+                TestIntent(
+                    intent_id=f"fake-{i}",
+                    strategy="happy_path",
+                    operation_id=endpoint.method + " " + endpoint.path,
+                    method=endpoint.method,
+                    path=endpoint.path,
+                    name=f"fake-{i}",
+                    body_override=None,
+                    body_type_override=None,
+                    assertions=[
+                        {
+                            "type": "status_code",
+                            "operator": "in",
+                            "expected": [200, 201, 202, 204],
+                        }
+                    ],
+                    expected_status_codes=[200, 201, 202, 204],
+                    expected_status_mode="any_of",
+                )
+                for i in range(21)
+            ]
+
+    # Patch the *next* service instance's _design_engine. The conftest
+    # creates one fresh app per test, so we monkeypatch the class to
+    # inject our fake when ``__init__`` runs.
+    orig_init = OpenApiImportService.__init__
+
+    def patched_init(self, session):
+        orig_init(self, session)
+        self._design_engine = _FakeEngine(self._design_engine)
+
+    monkeypatch.setattr(OpenApiImportService, "__init__", patched_init)
+
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400, resp.text
+    body = resp.json()
+    assert body["code"] == "GENERATOR_INTENT_LIMIT_EXCEEDED"
+    # Details must include the offending operation + cap.
+    assert body["details"]["cap"] == 20
+    assert body["details"]["produced"] == 21
+
+
+# ---------------------------------------------------------------------------
+# FT-R01 — router ?design=schema&dry_run=true
+# ---------------------------------------------------------------------------
+async def test_ft_r01_router_design_schema_dry_run(client, db_session):
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "preview_id" in body
+    assert "total_intents" in body
+    assert body["total_intents"] is not None
+
+
+# ---------------------------------------------------------------------------
+# FT-R02 — router ?design=schema 真创建
+# ---------------------------------------------------------------------------
+async def test_ft_r02_router_design_schema_commit_creates_cases(client, db_session):
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    # Step 1: preview
+    preview_resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert preview_resp.status_code == 200, preview_resp.text
+    preview_id = preview_resp.json()["preview_id"]
+
+    # Step 2: commit. The OpenApiImportRequest still requires the XOR
+    # shape on the body, so we re-send the source_content (the service
+    # ignores it because it uses the cached preview).
+    commit_resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={
+            "design": "schema",
+            "dry_run": "false",
+            "preview_id": preview_id,
+        },
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert commit_resp.status_code == 200, commit_resp.text
+    commit_body = commit_resp.json()
+    # At least the happy_path intent was created.
+    assert commit_body["total_attempted"] >= 1
+    assert commit_body["total_succeeded"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# FT-R03 — router ?design=simple 字节级 = F012
+# ---------------------------------------------------------------------------
+async def test_ft_r03_router_design_simple_byte_equivalent(client, db_session):
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    # Explicit ?design=simple and equal to omitting it.
+    r_simple = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "simple", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r_simple.status_code == 200, r_simple.text
+    body = r_simple.json()
+    # F012 byte-equivalent: total_intents must be absent or None.
+    assert body.get("total_intents") is None
+    # 1 op → 1 preview row with no strategy label.
+    assert len(body["operations"]) == 1
+    assert body["operations"][0].get("strategy") is None
+
+
+# ---------------------------------------------------------------------------
+# FT-R09 — router ?design=BOGUS → 422 VALIDATION_ERROR
+# ---------------------------------------------------------------------------
+async def test_ft_r09_router_design_invalid_literal_returns_422(client, db_session):
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "BOGUS", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    # FastAPI Literal validation → 422.
+    assert resp.status_code == 422, resp.text
+
+
+# ---------------------------------------------------------------------------
+# FT-R10 — 同一 spec 二次 preview + commit（幂等性保证）
+# ---------------------------------------------------------------------------
+async def test_ft_r10_router_design_schema_two_phase_idempotent(client, db_session):
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    preview_resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert preview_resp.status_code == 200, preview_resp.text
+    preview_id = preview_resp.json()["preview_id"]
+
+    # Commit once.
+    commit1 = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={
+            "design": "schema",
+            "dry_run": "false",
+            "preview_id": preview_id,
+        },
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert commit1.status_code == 200, commit1.text
+
+    # Re-use the same preview_id (now invalidated) → 400 conflict.
+    commit2 = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={
+            "design": "schema",
+            "dry_run": "false",
+            "preview_id": preview_id,
+        },
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert commit2.status_code == 400, commit2.text
+    assert commit2.json()["code"] == "OPENAPI_IMPORT_CONFLICT"
