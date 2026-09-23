@@ -1,17 +1,31 @@
-"""F012 + F013 OpenAPI import Pydantic schemas.
+"""F012 + F013 + F023 OpenAPI import Pydantic schemas.
 
 F013 extends the F012 surface with ``OpenApiImportDocument`` and the
 ``BatchImportPreviewResponse`` / ``BatchImportResponse`` shapes used
 when ``?batch=true``. The F012 single-document contract
 (``OpenApiImportRequest`` / ``ImportPreviewResponse`` /
-``ImportResponse`` / ``OperationPreview``) is kept byte-for-byte.
+``ImportResponse`` / ``OperationPreview``) is kept byte-for-byte when
+``?design=simple``.
+
+F023 (ADR-009) adds **optional** fields to expose the schema-driven
+mode without breaking F012 clients:
+
+* ``OperationPreview.strategy`` — non-null only when ``design="schema"``.
+* ``OperationPreview.name`` — for ``design="schema"`` this is the
+  per-intent name (with strategy suffix), so callers should expect it
+  to differ from ``op.name``.
+* ``ImportPreviewResponse.total_intents`` / ``BatchImportPreviewResponse
+  .total_intents`` — populated only when ``design="schema"`` (sum of
+  intents across all operations / documents).
+* ``DocumentPreviewSummary.total_intents`` — per-document intent count.
 """
+
 from __future__ import annotations
+
 from typing import Any, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 
 ImportConflictStrategy = Literal["skip", "overwrite"]
 
@@ -36,9 +50,7 @@ class OpenApiImportDocument(BaseModel):
         if self.source_url is not None:
             url = self.source_url.lower()
             if not (url.startswith("http://") or url.startswith("https://")):
-                raise ValueError(
-                    "source_url must start with http:// or https://"
-                )
+                raise ValueError("source_url must start with http:// or https://")
         return self
 
 
@@ -95,6 +107,7 @@ class OpenApiImportRequest(BaseModel):
             # business code, not a generic 422. Per-doc models already
             # validated source_url/source_content XOR and URL scheme.
             from app.config import settings  # local import avoids module cycle
+
             if len(self.documents) > settings.OPENAPI_BATCH_MAX_DOCS:
                 raise ValueError(
                     f"documents[] length {len(self.documents)} exceeds "
@@ -117,6 +130,11 @@ class OperationPreview(BaseModel):
     path: str
     name: str
     status: str
+    # F023: populated only when ``?design=schema`` — the strategy name
+    # (``happy_path`` / ``required_field_missing`` / ``enum_coverage`` /
+    # ``boundary_min_max`` / ``format_invalid`` / ``auth_missing``).
+    # Null when ``?design=simple`` (F012 byte-equivalent path).
+    strategy: Optional[str] = None
 
 
 class ImportPreviewResponse(BaseModel):
@@ -133,6 +151,10 @@ class ImportPreviewResponse(BaseModel):
     skipped_count: int
     operations: list[OperationPreview]
     errors: list[str]
+    # F023: total intent count across all operations, set only when
+    # ``?design=schema``. Null when ``?design=simple`` (or for the
+    # F012-compat fallback).
+    total_intents: Optional[int] = None
 
 
 class ImportResponse(BaseModel):
@@ -172,6 +194,8 @@ class DocumentPreviewSummary(BaseModel):
         default_factory=list,
         description="Per-document parse/validation errors; does not abort siblings",
     )
+    # F023: per-document intent count (only set when ``?design=schema``).
+    total_intents: Optional[int] = None
 
 
 class BatchImportPreviewResponse(BaseModel):
@@ -196,6 +220,8 @@ class BatchImportPreviewResponse(BaseModel):
             " Currently always populated by preview_batch."
         ),
     )
+    # F023: total intents across all documents (only when ``?design=schema``).
+    total_intents: Optional[int] = None
 
 
 class DocumentImportSummary(BaseModel):
