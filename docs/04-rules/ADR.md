@@ -320,6 +320,96 @@ Generator 之间的稳定中间表示。三条核心决策如下：
 
 ---
 
+## ADR-009：F023 Test Generator 接入 F012/F013 端点（草稿，待 review）
+
+- 状态：**Accepted**
+- 日期：2026-09-23
+- 接受人：Reviewer · 通过日期：2026-09-23
+
+### 背景
+
+F021（SchemaModel）+ F022（TestDesignEngine + TestIntent）已经让"接口契约 → 声明式用例意图"链路打通。F023 是这条链路的最后一步：把 `TestIntent[]` 变成 `TestCaseCreateRequest[]`，并把生成能力挂到 F012/F013 既有端点（`POST /projects/{project_id}/suites/{suite_id}/import/openapi`）上。BACKLOG F023 行明确："开始前需先写 ADR-009"。
+
+需要决策的关键点（详见 `docs/01-product/F023_SPEC.md §2` 决策表 Q1–Q10）：
+
+1. 是否新增 `?design=` Query？默认行为？
+2. `GENERATOR_INTENT_LIMIT_EXCEEDED` 错误码的 HTTP 状态码（BACKLOG 写 422；ERROR_CODE §5.1 现范式是 400 + 字符串业务码）
+3. 配置项归属：复用 F022 `generator_max_intents_per_operation` vs. 新增独立配置
+4. Batch 模式（`?batch=true`）下的超限行为：整批 abort vs. per-operation 隔离（与 F013 单文档解析失败"不影响兄弟文档"语义的对齐）
+5. json_path 自动断言缺失响应 schema 时的行为：静默跳过 vs. WARNING
+6. 鉴权策略是否完全沿用 F012 `_load_project_suite`
+
+### 决策（**Accepted**）
+
+**决策 1（`?design=` Query）**：新增 `?design=simple|schema`，缺省值 `"simple"`。
+
+* `simple`：与既有 F012 字节级一致（每 operation → 1 条 happy path + 1 个 status_code 断言）。**保证向后兼容**——所有 F012/F013 既有客户端无感。
+* `schema`：启用 F022 TestDesignEngine + F023 TestGenerator，按策略集合生成 1..N 条意图，每条意图转 `TestCaseCreateRequest`。
+* 字面量集合 `Literal["simple", "schema"]`，将来扩展（如 `"ai"`）必须独立 ADR。
+
+**决策 2（错误码 HTTP 状态）**：**采用 400 + 字符串业务码**（沿用 F012/F013 §5.1 范式）。
+
+* 业务码：`GENERATOR_INTENT_LIMIT_EXCEEDED`
+* 拒绝 BACKLOG 原文"422"建议——理由：F012/F013 已确立"OpenAPI 导入类错误"全部走 400 字符串范式；F023 是同一端点的能力扩展，不应破坏范式一致性。
+* 错误响应格式遵循 `docs/03-api/ERROR_CODE.md §1`：`{"code": "<业务码>", "message": "...", "data": {...}}`。
+* 非法 `?design=` 字面量（如 `?design=BOGUS`）由 Pydantic `Literal` 校验自动返 422 `VALIDATION_ERROR`（FastAPI 标准行为，不属于 F023 新增业务码）。
+
+**决策 3（配置项）**：**复用 F022 `generator_max_intents_per_operation`**，**不新增独立配置项**。
+
+* F022 §7 已定义 `generator_max_intents_per_operation: int = 20`（范围 1–100）。
+* F023 沿用同一配置项作为 intent 配额上限，**单一配置源**。
+* 启动期校验沿用 F022 `_validate_strategy_caps`（已存在）：`strategy_*_max_per_op ≤ generator_max_intents_per_operation`。
+
+**决策 4（Batch 超限行为）**：**整批 abort**——任一 operation intent 数超 `generator_max_intents_per_operation` 时，整批 preview/commit 失败。
+
+* **不沿用 F013 "per-doc 失败隔离"语义**——理由：
+  * F013 的 per-doc 失败是**数据问题**（spec 解析失败 / 抓取失败）；
+  * F023 的 intent 超限是**平台配额保护**，提前 abort 避免下游 cascade。
+* 错误响应中 `details.doc_index` + `details.operation` + `details.produced` + `details.cap` 定位越界 operation。
+
+**决策 5（json_path 缺失响应 schema）**：**静默跳过**（不警告）。
+
+* 与 F022 "best-effort" + WARNING 风格一致；
+* 退化路径仅生成 `status_code` 断言，不强制 `json_path`。
+* 后续若需"显式标注哪些字段未生成 json_path"，须独立 ADR。
+
+**决策 6（鉴权）**：完全沿用 F012 `_load_project_suite`。
+
+* 必须登录（`get_current_user`）。
+* 必须当前用户是 `project.owner_id` 或 `is_superuser`。
+* `suite.project_id == path.project_id`。
+* F023 在测试侧**复用** `test_authz_regressions.py` 既有矩阵，新增 `?design=schema` 等价变体。
+
+### 影响
+
+- **新增模块**：`src/app/domain/test_generator/generator.py`（纯函数 `TestGenerator`）。
+- **修改文件**：
+  - `src/app/domain/openapi_importer/service.py`：`preview` / `import_from_preview` / `preview_batch` / `import_batch_from_preview` 各加 `design` 参数（`design="simple"` 时字节级保持）。
+  - `src/app/interfaces/http/openapi_importer_router.py`：加 `?design=` Query，路由分发。
+  - `src/app/domain/openapi_importer/schema.py`：响应模型新增**可选**字段 `total_intents: int | None`、`strategy: str | None`（向后兼容）。
+  - `src/tests/conftest.py`：新增 6 个高频 fixture（详见 F023_SPEC §11）。
+  - `src/tests/test_openapi_importer.py`：增量 FT-S01~S09 + FT-R01~R10 用例。
+  - `src/tests/test_test_generator.py`（**新文件**）：FT-U01~U13 单测。
+  - `src/tests/test_authz_regressions.py`：增量 FT-A01~A03。
+- **向后兼容**：`?design=` 缺省值 = `"simple"`，与既有 F012 路径字节级一致；所有 F012/F013 既有客户端零修改。
+- **零新依赖**：纯 stdlib + Pydantic v2（已是项目栈）。
+- **零 DB Migration / 零 model.py 改动**：沿用 F007 `api_test_case`。
+- **零新错误码（HTTP 范式）**：复用 ERROR_CODE §5.1 范式，新增 1 行 `GENERATOR_INTENT_LIMIT_EXCEEDED`。
+- **零新配置项**：复用 F022。
+- **日志脱敏**：WARNING 日志只输出 `operation=<method> <path> produced=K cap=M`，**不打印** spec body / 认证头。
+- **文档同步**：`docs/01-product/F023_SPEC.md`（已 QA 起草） + `docs/03-api/ERROR_CODE.md §5.1` + `docs/03-api/OPENAPI.yaml` + `docs/03-api/API_GUIDE.md §3` + `docs/05-test/ACCEPTANCE.md`。
+- **测试**：新增 `src/tests/test_test_generator.py`（≥ 13 单测）+ 增量 `test_openapi_importer.py`（≥ 19 集成测）+ 增量 `test_authz_regressions.py`（3 鉴权测）。
+- **回归**：F012 13 + F013 13 + F022 23 + F021 33 = **82 个测试字节级不变**。
+
+### 备选方案（已记录）
+
+* **A：HTTP 错误码用 422**：与 F012/F013 范式冲突；理由不充分。
+* **B：F023 新增独立 `GENERATOR_MAX_INTENTS_PER_OPERATION` 配置项**：双配置源；用户需理解两份文档。
+* **C：Batch 超限走 per-operation 隔离**：与平台保护语义冲突，可能 cascade 失败。
+* **D：json_path 缺失时 WARNING**：噪音过多；与 F022 best-effort 不一致。
+
+---
+
 ## ADR 模板
 
 ```text

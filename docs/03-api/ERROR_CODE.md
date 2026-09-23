@@ -112,9 +112,15 @@ F012 未引入新的整型错误码，所有导入异常统一映射到 HTTP 400
 | 400 | `OPENAPI_IMPORT_CONFLICT` | preview_id 失效 / 缓存丢失，需要重新预览 |
 | 400 | `VALIDATION_ERROR` | 请求体不合法（`source_url` 与 `source_content` 必须二选一 / URL scheme 非法） |
 | 400 | `OPENAPI_BATCH_LIMIT_EXCEEDED` | F013 批量：文档数 > `OPENAPI_BATCH_MAX_DOCS` 或 单文档 operation > `OPENAPI_BATCH_MAX_OPS_PER_DOC` |
+| 400 | `GENERATOR_INTENT_LIMIT_EXCEEDED` | **F023**：单 operation intent 数 > `generator_max_intents_per_operation`（详见 ADR-009） |
 
 设计依据：F012 属于客户端可控的输入校验，不属于系统/资源错误；
 为避免错误码表膨胀，统一用 400 + 字符串 code 区分。
+
+> **F023 备注**：BACKLOG F023 行原文写"422 `GENERATOR_INTENT_LIMIT_EXCEEDED`"，
+> 但 §5.1 现有 5 个业务码（含 F013）全部走 400 + 字符串 code 范式。
+> F023 作为同一端点（`POST .../import/openapi`）的能力扩展，**沿用 400 范式**
+> 以保持错误码表一致；具体取舍见 `docs/04-rules/ADR.md` ADR-009。
 
 ---
 

@@ -611,7 +611,7 @@ paths:
   /projects/{project_id}/suites/{suite_id}/import/openapi:
     post:
       tags: [OpenAPI]
-      summary: F012 单文档 / F013 多文档批量 OpenAPI 导入（?batch=true 启用批量）
+      summary: F012 单文档 / F013 多文档批量 / F023 策略驱动 OpenAPI 导入（?batch=true 启用批量，?design=schema 启用策略驱动）
       parameters:
         - name: project_id
           in: path
@@ -626,6 +626,16 @@ paths:
           required: false
           description: F013 批量开关；true=启用 documents[]，false=走 F012 单文档语义
           schema: { type: boolean, default: false }
+        - name: design
+          in: query
+          required: false
+          description: |
+            F023 模式选择（ADR-009）：
+              * `simple`（默认）= 与 F012 字节级一致（每 operation → 1 条 happy path + 1 个 status_code 断言）。
+              * `schema` = 策略驱动：F022 TestDesignEngine + F023 TestGenerator，
+                1..N 条用例/op，上限 `generator_max_intents_per_operation`（默认 20）。
+                越界返 400 `GENERATOR_INTENT_LIMIT_EXCEEDED`（沿用 F012 §5.1 范式）。
+          schema: { type: string, enum: [simple, schema], default: simple }
         - name: dry_run
           in: query
           required: false
@@ -651,15 +661,17 @@ paths:
               $ref: '#/components/schemas/OpenApiImportRequest'
       responses:
         '200':
-          description: 成功（F012 单文档：ImportPreviewResponse / ImportResponse；F013 批量：BatchImportPreviewResponse / BatchImportResponse）
+          description: 成功（F012 单文档：ImportPreviewResponse / ImportResponse；F013 批量：BatchImportPreviewResponse / BatchImportResponse；F023 模式额外暴露 `total_intents` 字段）
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponse'
         '400':
-          description: 导入过程错误（含 OPENAPI_PARSE_ERROR / OPENAPI_FETCH_ERROR / OPENAPI_IMPORT_CONFLICT / OPENAPI_BATCH_LIMIT_EXCEEDED）
+          description: |
+            导入过程错误（含 `OPENAPI_PARSE_ERROR` / `OPENAPI_FETCH_ERROR` / `OPENAPI_IMPORT_CONFLICT` /
+            `OPENAPI_BATCH_LIMIT_EXCEEDED` / **F023 `GENERATOR_INTENT_LIMIT_EXCEEDED`**）
         '401': { description: 未认证 }
         '403': { description: 非项目 owner / admin }
         '404': { description: 项目或套件不存在 }
         '422':
-          description: 参数校验失败（含 documents[] 越界、URL scheme 非法、单文档字段与 documents[] 同传等）
+          description: 参数校验失败（含 documents[] 越界、URL scheme 非法、单文档字段与 documents[] 同传、`?design=BOGUS` 非法字面量等）

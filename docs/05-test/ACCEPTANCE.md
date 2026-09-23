@@ -170,6 +170,55 @@ MVP 完成时必须满足：
 
 ---
 
+### 4.8 策略驱动用例生成（F023）
+
+> **核心约束**（ADR-009）：
+> - `?design=` Query 字面量 = `Literal["simple", "schema"]`，缺省 `"simple"`。
+> - `?design=simple`（或省略）行为**字节级** = F012。
+> - `?design=schema` 启用 F022 TestDesignEngine + F023 TestGenerator，按策略集合生成 1..N 条意图，单 operation 越界返 400 `GENERATOR_INTENT_LIMIT_EXCEEDED`。
+> - **0 新增配置项**（复用 F022 `generator_max_intents_per_operation`）。
+> - **0 新表 / 0 model.py 改动 / 0 Alembic migration**。
+
+**功能验收（FT-U/FT-S/FT-R 覆盖）**
+- [ ] `?design=` 缺省值 = `simple`；`?design=schema` 启用策略驱动。
+- [ ] `?design=simple` 行为**字节级** = F012（480 baseline 全绿，0 退化）。
+- [ ] `?design=schema&dry_run=true` 返回 preview 中每个 operation 的 `operations[]` 展开为 1..N 条 intent（按 F022 优先级排序：happy_path > required > enum > boundary > format > auth）。
+- [ ] 每条 intent 的 `strategy` 字段被填上（`happy_path` / `required_field_missing` / `enum_coverage` / `boundary_min_max` / `format_invalid` / `auth_missing`）。
+- [ ] 响应中 `total_intents` 反映 available intent 总数（仅 `?design=schema` 时非 null）。
+- [ ] `?design=schema&dry_run=false&preview_id=...` 真落库；每个 operation 产出 N 条 `api_test_case`（N = 该 operation 的 intent 数）。
+- [ ] 落库的 case 自动包含多类型断言：`status_code`（来自 intent.expected_status_codes）+ `json_path $.<field> exists`（响应 schema required 字段，happy_path only）+ `header Content-Type exists`（响应 schema 200 + content_type，happy_path only）。
+- [ ] `auth_missing` 策略产出的 case `headers` 不含 `Authorization` / `authorization`。
+- [ ] `format_invalid` 策略产出的 case body 字段填非法值（如 `"not-a-valid-email"`）。
+- [ ] `?design=schema` + `?batch=true` 多文档：每文档独立 sub-Operation 各自跑 F022；任一 op 越界**整批 abort**（非 F013 风格的 per-doc 失败隔离）。
+- [ ] `name_prefix` 参数应用于每个 intent（`f"{prefix}: {intent.name}"`，截断 200 字符）。
+- [ ] `?design=BOGUS` 非法字面量由 FastAPI Literal 校验自动 422 `VALIDATION_ERROR`。
+
+**错误码 / 异常路径**
+- [ ] 单 operation 意图数 > 20（默认 `generator_max_intents_per_operation`）→ **400** `GENERATOR_INTENT_LIMIT_EXCEEDED`（沿用 §5.1 范式；拒绝 BACKLOG 原文 422 提议，理由见 ADR-009）。
+- [ ] 错误响应 `details` 含 `method` / `path` / `produced` / `cap` 定位越界 operation。
+
+**鉴权 / 数据（FT-A 覆盖）**
+- [ ] `?design=schema` 不放松任何鉴权：未登录 401；非 owner 非 admin 403；跨项目 suite 404。
+- [ ] `?design=schema` + `on_conflict=overwrite` 时旧 case 被删除（沿用 F012 级联语义）；`api_test_results` 历史**不级联删除**（AI_RULES §6）。
+- [ ] `?design=schema` 不写 spec body / 认证头 / token 到日志。
+
+**测试基线**
+- [ ] `src/tests/test_test_generator.py` ≥ 13 个单测（FT-U01~U13 + 2 个 defensive）。
+- [ ] `src/tests/test_openapi_importer.py` 增量 ≥ 8 个集成测（FT-S01/S02/S04 + FT-R01/R02/R03/R09/R10）。
+- [ ] `src/tests/test_authz_regressions.py` 增量 3 个鉴权测（FT-A01/A02/A03）。
+- [ ] `src/tests/conftest.py` 增量 6 个高频 fixture（auth_headers / admin_user / member_user / make_project / make_environment / make_suite）；smoke 测试 `_smoke_f023_fixtures.py` 已删除。
+- [ ] **全量 `pytest src/tests -v` ≥ 509 全绿**（480 baseline + 29 F023 用例），0 回归。
+- [ ] `docs/01-product/BACKLOG.md §F023` 状态更新至 Done。
+
+**边界（明确不做）**
+- [ ] 0 新配置项（不引入 `GENERATOR_MAX_INTENTS_PER_OPERATION`；复用 F022 `generator_max_intents_per_operation`）。
+- [ ] 0 新端点（复用 `POST /projects/{p}/suites/{s}/import/openapi` + `?design=schema`）。
+- [ ] 0 新表 / 0 model.py 改动 / 0 Alembic migration。
+- [ ] 0 AI / LLM / RAG / 第三方 schema 库。
+- [ ] 0 前端（F024 范围）。
+
+---
+
 ## 5. 执行验收
 
 - [ ] 可以执行单用例。

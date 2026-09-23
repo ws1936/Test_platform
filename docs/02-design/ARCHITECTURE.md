@@ -138,6 +138,27 @@
 | TestCase | 请求定义和断言配置 |
 | TestRun | 一次执行批次 |
 | TestResult | 单条用例执行结果 |
+| TestGenerator（F023） | 把 F022 `TestIntent[]` 转为 `TestCaseCreateRequest[]`；纯函数；自动生成 `status_code` / `json_path` / `header` 三类断言 |
+| TestDesignEngine（F022） | 把 F021 `EndpointSchema` 转为 `TestIntent[]`；策略化用例设计 |
+| SchemaAnalyzer（F021） | 把 F012 `Operation` 转为 F021 `EndpointSchema`；SchemaModel 数据契约 |
+
+### 4.3 OpenAPI 自动生成链路（F012 → F013 → F021 → F022 → F023）
+
+```text
+OpenAPI 3.x 文档
+   ↓  F012  OpenApiSpecParser
+ParsedSpec (Operation[])
+   ↓  F021  SchemaAnalyzer
+EndpointSchema (SchemaModel)
+   ↓  F022  TestDesignEngine (6 strategies)
+TestIntent[] (declarative)
+   ↓  F023  TestGenerator
+TestCaseCreateRequest[]
+   ↓  F007  TestCaseService.create_test_case
+api_test_case (DB row)
+```
+
+> 7 阶段流程图自检——F021/F022/F023 三个阶段都已落地；F024（前端子子集）尚在 Backlog。
 
 ---
 
