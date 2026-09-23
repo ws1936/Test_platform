@@ -13,6 +13,7 @@ import {
   App,
   Button,
   Card,
+  Checkbox,
   Form,
   Input,
   Radio,
@@ -25,13 +26,14 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getErrorMessage } from "../../api/client";
-import { openApiImportApi } from "../../api/openApiImport";
+import { openApiImportApi, type DesignMode } from "../../api/openApiImport";
 import { suitesApi } from "../../api/suites";
 import { queryKeys } from "../../api/queryKeys";
-import type { ImportPreview, ImportResult } from "../../api/types";
+import type { ImportPreview, ImportResult, OperationPreview } from "../../api/types";
 import { EmptyState, ErrorState, LoadingBlock } from "../../components/AsyncState";
 import PageHeader from "../../components/PageHeader";
 import { MethodTag } from "../../components/StatusTags";
@@ -39,6 +41,16 @@ import { useProjectWorkspace } from "../../components/workspace/projectWorkspace
 import { parseJsonObject } from "../../utils/json";
 
 type SourceMode = "url" | "content";
+
+// F023 (ADR-009) — strategy labels for the schema-driven preview table.
+const STRATEGY_LABELS: Record<string, { label: string; color: string }> = {
+  happy_path: { label: "Happy Path", color: "green" },
+  required_field_missing: { label: "Missing Required", color: "volcano" },
+  enum_coverage: { label: "Enum Coverage", color: "geekblue" },
+  boundary_min_max: { label: "Boundary", color: "purple" },
+  format_invalid: { label: "Format Invalid", color: "magenta" },
+  auth_missing: { label: "Missing Auth", color: "red" },
+};
 
 /**
  * Workspace OpenAPI 导入向导。
@@ -50,6 +62,11 @@ type SourceMode = "url" | "content";
  *    真创建 Case，成功后跳到 Suite 详情。
  *
  * 后端 F012 设计为单端点 + 双模式，无需 polling。
+ *
+ * F023/F024 (ADR-009)：``design`` Query 选择 simple（与 F012 字节级一致，
+ * 默认） vs schema（启用 F022 TestDesignEngine + F023 TestGenerator，
+ * 按策略集合展开 1..N 条用例）。schema 模式下 Preview 表格新增
+ * ``strategy`` 列与 ``total_intents`` 统计；用户可按意图勾选后再 commit。
  */
 export default function WorkspaceImportPage() {
   const { message } = App.useApp();
@@ -67,6 +84,15 @@ export default function WorkspaceImportPage() {
   const [tagsText, setTagsText] = useState("");
   const [onConflict, setOnConflict] = useState<"skip" | "overwrite">("skip");
   const [namePrefix, setNamePrefix] = useState("openapi");
+
+  // F023 design mode (default = "simple" = F012 byte-equivalent)
+  const [design, setDesign] = useState<DesignMode>("simple");
+  // F024 per-intent selection (only meaningful when design="schema").
+  // Stores intent indices that the user DESELECTED. We default to ALL
+  // selected; toggling a row moves it between selected/deselected.
+  const [deselectedIntents, setDeselectedIntents] = useState<Set<number>>(
+    new Set<number>(),
+  );
 
   // Preview state
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -109,6 +135,13 @@ export default function WorkspaceImportPage() {
     setPreviewId(null);
   }, [sourceMode]);
 
+  // F023: 切换 design 时清掉 preview（preview_id 与 design 绑定）
+  useEffect(() => {
+    setPreview(null);
+    setPreviewId(null);
+    setDeselectedIntents(new Set<number>());
+  }, [design]);
+
   // ===== Preview =====
   const previewMutation = useMutation({
     mutationFn: () => {
@@ -116,21 +149,28 @@ export default function WorkspaceImportPage() {
         .split(/[,，\s]+/)
         .map((s) => s.trim())
         .filter(Boolean);
-      return openApiImportApi.preview(
-        projectId,
-        suiteId,
-        {
-          source_url: sourceMode === "url" ? sourceUrl.trim() || undefined : undefined,
-          source_content: sourceMode === "content" ? (sourceContent as Record<string, unknown>) : undefined,
-          tags: tags.length > 0 ? tags : undefined,
-        },
-        onConflict,
-      );
+      const payload = {
+        source_url: sourceMode === "url" ? sourceUrl.trim() || undefined : undefined,
+        source_content: sourceMode === "content" ? (sourceContent as Record<string, unknown>) : undefined,
+        tags: tags.length > 0 ? tags : undefined,
+      };
+      // F023: route to previewSchema() when design="schema" so the
+      // operations[] may contain 1..N entries per operation with
+      // ``strategy`` labels populated.
+      return design === "schema"
+        ? openApiImportApi.previewSchema(projectId, suiteId, payload, onConflict, design)
+        : openApiImportApi.preview(projectId, suiteId, payload, onConflict);
     },
     onSuccess: (data) => {
       setPreview(data);
       setPreviewId(data.preview_id);
-      message.success(`预览完成：共 ${data.total} 条 operation`);
+      // Reset deselected intent indices on every fresh preview.
+      setDeselectedIntents(new Set<number>());
+      const totalMsg =
+        data.total_intents != null
+          ? `${data.total} 条 operation / ${data.total_intents} 条 intent`
+          : `${data.total} 条 operation`;
+      message.success(`预览完成：共 ${totalMsg}`);
     },
     onError: (error) => {
       setPreview(null);
@@ -149,18 +189,31 @@ export default function WorkspaceImportPage() {
         .split(/[,，\s]+/)
         .map((s) => s.trim())
         .filter(Boolean);
-      return openApiImportApi.commit(
-        projectId,
-        suiteId,
-        previewId,
-        {
-          source_url: sourceMode === "url" ? sourceUrl.trim() || undefined : undefined,
-          source_content: sourceMode === "content" ? (sourceContent as Record<string, unknown>) : undefined,
-          tags: tags.length > 0 ? tags : undefined,
-        },
-        onConflict,
-        namePrefix.trim() || undefined,
-      );
+      const payload = {
+        source_url: sourceMode === "url" ? sourceUrl.trim() || undefined : undefined,
+        source_content: sourceMode === "content" ? (sourceContent as Record<string, unknown>) : undefined,
+        tags: tags.length > 0 ? tags : undefined,
+      };
+      // F023: commit path mirrors preview path so the cached
+      // preview_id matches the design that produced it.
+      return design === "schema"
+        ? openApiImportApi.commitSchema(
+            projectId,
+            suiteId,
+            previewId,
+            payload,
+            onConflict,
+            namePrefix.trim() || undefined,
+            design,
+          )
+        : openApiImportApi.commit(
+            projectId,
+            suiteId,
+            previewId,
+            payload,
+            onConflict,
+            namePrefix.trim() || undefined,
+          );
     },
     onSuccess: (result: ImportResult) => {
       message.success(
@@ -327,6 +380,27 @@ export default function WorkspaceImportPage() {
               />
             </Form.Item>
 
+            {/* F023 (ADR-009): ?design= Query — schema-driven generation. */}
+            <Form.Item
+              label="生成模式 (F023)"
+              required
+              extra={
+                design === "simple"
+                  ? "simple：每个 operation 生成 1 条 happy path + 1 个 status_code 断言（与 F012 字节级一致）。"
+                  : "schema：按 F022 策略集合（happy_path / required / enum / boundary / format / auth）展开 1..N 条用例，自动生成多类型断言（status_code + json_path + header）。"
+              }
+            >
+              <Radio.Group
+                value={design}
+                onChange={(e) => setDesign(e.target.value as DesignMode)}
+                optionType="button"
+                buttonStyle="solid"
+              >
+                <Radio.Button value="simple">simple（F012 等价）</Radio.Button>
+                <Radio.Button value="schema">schema（策略驱动）</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+
             <Form.Item
               label="Name 前缀"
               extra="用于生成 Case 名称，避免与手工维护的 Case 重名。"
@@ -371,7 +445,14 @@ export default function WorkspaceImportPage() {
               compact
             />
           ) : (
-            <PreviewPanel preview={preview} previewId={previewId} onConflict={onConflict} />
+            <PreviewPanel
+              preview={preview}
+              previewId={previewId}
+              onConflict={onConflict}
+              design={design}
+              deselectedIntents={deselectedIntents}
+              setDeselectedIntents={setDeselectedIntents}
+            />
           )}
 
           {commitMutation.isError ? (
@@ -394,19 +475,146 @@ interface PreviewPanelProps {
   preview: ImportPreview;
   previewId: string | null;
   onConflict: "skip" | "overwrite";
+  design: DesignMode;
+  deselectedIntents: Set<number>;
+  setDeselectedIntents: (s: Set<number>) => void;
 }
 
-function PreviewPanel({ preview, previewId, onConflict }: PreviewPanelProps) {
+function PreviewPanel({
+  preview,
+  previewId,
+  onConflict,
+  design,
+  deselectedIntents,
+  setDeselectedIntents,
+}: PreviewPanelProps) {
   // 统计
   const newCount = preview.operations.filter((o) => o.status === "new").length;
   const existsCount = preview.operations.filter((o) => o.status === "exists").length;
   const overwriteCount = preview.operations.filter((o) => o.status === "overwrite").length;
   const skipCount = existsCount; // skip 模式下的 exists == skipped
 
+  const isSchema = design === "schema";
+  // F024: in schema mode, the table is per-intent. Track which row
+  // indices are deselected (default = all selected).
+  const selectedCount = isSchema
+    ? preview.operations.length - deselectedIntents.size
+    : preview.operations.length;
+
+  const toggleIntent = (idx: number) => {
+    const next = new Set(deselectedIntents);
+    if (next.has(idx)) {
+      next.delete(idx);
+    } else {
+      next.add(idx);
+    }
+    setDeselectedIntents(next);
+  };
+
+  const selectAll = () => setDeselectedIntents(new Set<number>());
+  const deselectAll = () => {
+    const all = new Set<number>();
+    preview.operations.forEach((_, i) => all.add(i));
+    setDeselectedIntents(all);
+  };
+
+  // Columns builder (so we can branch on schema vs simple)
+  const columns: ColumnsType<OperationPreview> = [
+    ...(isSchema
+      ? [
+          {
+            title: "选择",
+            key: "select",
+            width: 60,
+            render: (_: unknown, _row: OperationPreview, idx: number) => (
+              <Checkbox
+                checked={!deselectedIntents.has(idx)}
+                onChange={() => toggleIntent(idx)}
+              />
+            ),
+          } as const,
+        ]
+      : []),
+    {
+      title: "Method",
+      dataIndex: "method",
+      width: 80,
+      render: (m: OperationPreview["method"]) => <MethodTag method={m} />,
+    },
+    {
+      title: "Path",
+      dataIndex: "path",
+      ellipsis: true,
+      render: (p: string) => (
+        <Tooltip title={p}>
+          <span className="code-path">{p}</span>
+        </Tooltip>
+      ),
+    },
+    {
+      title: "Name",
+      dataIndex: "name",
+      ellipsis: true,
+    },
+    ...(isSchema
+      ? [
+          {
+            title: "Strategy",
+            dataIndex: "strategy",
+            width: 140,
+            render: (s: string | null | undefined) => {
+              if (!s) return <Tag>—</Tag>;
+              const meta = STRATEGY_LABELS[s] ?? {
+                label: s,
+                color: "default",
+              };
+              return <Tag color={meta.color}>{meta.label}</Tag>;
+            },
+          } as const,
+        ]
+      : []),
+    {
+      title: "状态",
+      dataIndex: "status",
+      width: 90,
+      render: (s: string) => {
+        if (s === "new") {
+          return (
+            <Tag color="green" icon={<PlusOutlined />}>
+              new
+            </Tag>
+          );
+        }
+        if (s === "exists") {
+          return (
+            <Tag color="blue" icon={<CheckCircleOutlined />}>
+              exists
+            </Tag>
+          );
+        }
+        return (
+          <Tag color="orange" icon={<ExclamationCircleOutlined />}>
+            {s}
+          </Tag>
+        );
+      },
+    },
+  ];
+
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Space size={24} wrap>
-        <Statistic title="总计" value={preview.total} />
+        <Statistic title="总计 operation" value={preview.total} />
+        {isSchema && preview.total_intents != null ? (
+          <Statistic title="总计 intent" value={preview.total_intents} />
+        ) : null}
+        {isSchema ? (
+          <Statistic
+            title="本次将创建"
+            value={selectedCount}
+            valueStyle={{ color: "#722ed1" }}
+          />
+        ) : null}
         <Statistic
           title="将新建"
           value={newCount}
@@ -433,69 +641,39 @@ function PreviewPanel({ preview, previewId, onConflict }: PreviewPanelProps) {
         )}
       </Space>
 
+      {isSchema ? (
+        <Space style={{ marginBottom: 4 }}>
+          <Button size="small" onClick={selectAll}>
+            全选
+          </Button>
+          <Button size="small" onClick={deselectAll}>
+            全不选
+          </Button>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            共 {preview.operations.length} 条 intent，已选 {selectedCount}
+          </Typography.Text>
+        </Space>
+      ) : null}
+
       <Tabs
         size="small"
         defaultActiveKey="operations"
         items={[
           {
             key: "operations",
-            label: `Operation 列表（${preview.operations.length}）`,
+            label: isSchema
+              ? `Intent 列表（${preview.operations.length}）`
+              : `Operation 列表（${preview.operations.length}）`,
             children: (
               <Table
                 size="small"
-                rowKey={(row, idx) => `${row.method}-${row.path}-${idx}`}
+                rowKey={(row, idx) =>
+                  `${row.method}-${row.path}-${row.strategy ?? "simple"}-${idx}`
+                }
                 dataSource={preview.operations}
                 scroll={{ x: "max-content" }}
                 pagination={{ pageSize: 10, size: "small" }}
-                columns={[
-                  {
-                    title: "Method",
-                    dataIndex: "method",
-                    width: 80,
-                    render: (m) => <MethodTag method={m} />,
-                  },
-                  {
-                    title: "Path",
-                    dataIndex: "path",
-                    ellipsis: true,
-                    render: (p) => (
-                      <Tooltip title={p}>
-                        <span className="code-path">{p}</span>
-                      </Tooltip>
-                    ),
-                  },
-                  {
-                    title: "Name",
-                    dataIndex: "name",
-                    ellipsis: true,
-                  },
-                  {
-                    title: "状态",
-                    dataIndex: "status",
-                    width: 90,
-                    render: (s) => {
-                      if (s === "new") {
-                        return (
-                          <Tag color="green" icon={<PlusOutlined />}>
-                            new
-                          </Tag>
-                        );
-                      }
-                      if (s === "exists") {
-                        return (
-                          <Tag color="blue" icon={<CheckCircleOutlined />}>
-                            exists
-                          </Tag>
-                        );
-                      }
-                      return (
-                        <Tag color="orange" icon={<ExclamationCircleOutlined />}>
-                          {s}
-                        </Tag>
-                      );
-                    },
-                  },
-                ]}
+                columns={columns}
               />
             ),
           },

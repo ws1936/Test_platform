@@ -296,6 +296,11 @@ export interface OperationPreview {
   path: string;
   name: string;
   status: string;
+  // F023 (ADR-009): populated only when ``?design=schema``. Strategy
+  // name = happy_path / required_field_missing / enum_coverage /
+  // boundary_min_max / format_invalid / auth_missing. Null for
+  // ``?design=simple`` (F012 byte-equivalent path).
+  strategy?: string | null;
 }
 
 export interface ImportPreview {
@@ -310,6 +315,9 @@ export interface ImportPreview {
   skipped_count: number;
   operations: OperationPreview[];
   errors: string[];
+  // F023: total intent count across all operations. Non-null only when
+  // ``?design=schema``. Null for ``?design=simple``.
+  total_intents?: number | null;
 }
 
 export interface ImportResult {
