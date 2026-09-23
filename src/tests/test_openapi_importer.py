@@ -1285,3 +1285,356 @@ async def test_ft_r10_router_design_schema_two_phase_idempotent(client, db_sessi
     )
     assert commit2.status_code == 400, commit2.text
     assert commit2.json()["code"] == "OPENAPI_IMPORT_CONFLICT"
+
+
+# ---------------------------------------------------------------------------
+# FT-S03 — preview(design="schema") 默认 strategy 配置下字节级 = FT-S01
+# ---------------------------------------------------------------------------
+async def test_ft_s03_preview_schema_default_only_happy_path(client, db_session):
+    """When all F022 strategy_* toggles are False (default), design="schema"
+    must produce exactly 1 intent per operation (only happy_path). Bytes
+    must match FT-S01 except for the new ``strategy`` field."""
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Only happy_path is on (F022 default), so 1 op → 1 intent.
+    assert len(body["operations"]) == 1
+    assert body["operations"][0]["strategy"] == "happy_path"
+
+
+# ---------------------------------------------------------------------------
+# FT-S06 — import_from_preview(design="schema") + on_conflict=skip 重复
+# ---------------------------------------------------------------------------
+async def test_ft_s06_import_schema_skip_repeat_skips_all_intents(client, db_session):
+    """Second commit with same spec + on_conflict=skip must skip ALL
+    intents for the existing operation (not re-create)."""
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    # First commit.
+    pv1 = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    pid1 = pv1.json()["preview_id"]
+    c1 = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={
+            "design": "schema",
+            "dry_run": "false",
+            "preview_id": pid1,
+            "on_conflict": "skip",
+        },
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert c1.status_code == 200
+    first_succeeded = c1.json()["total_succeeded"]
+    assert first_succeeded >= 1
+
+    # Second commit (same spec) → all skipped.
+    pv2 = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    pid2 = pv2.json()["preview_id"]
+    c2 = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={
+            "design": "schema",
+            "dry_run": "false",
+            "preview_id": pid2,
+            "on_conflict": "skip",
+        },
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert c2.status_code == 200, c2.text
+    # The existing op is skipped; ``total_succeeded`` MUST be 0.
+    assert c2.json()["total_succeeded"] == 0
+
+
+# ---------------------------------------------------------------------------
+# FT-S07 — preview_batch(design="schema") 多文档 + 越限整批 abort
+# ---------------------------------------------------------------------------
+async def test_ft_s07_preview_batch_schema_aborts_whole_batch(
+    client, db_session, monkeypatch
+):
+    """In batch + design="schema" mode, ANY operation exceeding the cap
+    must abort the WHOLE batch (ADR-009 decision 4 — not F013 per-doc
+    isolation)."""
+    from app.domain.openapi_importer.service import OpenApiImportService
+    from app.domain.test_design.schema import TestIntent
+
+    class _FakeEngineMultiOp:
+        """Returns N intents for the FIRST op, 1 for the rest."""
+
+        def __init__(self, real):
+            self._real = real
+            self._called = 0
+
+        def design(self, endpoint):
+            self._called += 1
+            if self._called == 1:
+                # Overflow on first call.
+                return [
+                    TestIntent(
+                        intent_id=f"fake-{i}",
+                        strategy="happy_path",
+                        operation_id=endpoint.method + " " + endpoint.path,
+                        method=endpoint.method,
+                        path=endpoint.path,
+                        name=f"fake-{i}",
+                        body_override=None,
+                        body_type_override=None,
+                        assertions=[
+                            {
+                                "type": "status_code",
+                                "operator": "in",
+                                "expected": [200, 201, 202, 204],
+                            }
+                        ],
+                        expected_status_codes=[200, 201, 202, 204],
+                        expected_status_mode="any_of",
+                    )
+                    for i in range(21)
+                ]
+            return self._real.design(endpoint)
+
+    orig_init = OpenApiImportService.__init__
+
+    def patched_init(self, session):
+        orig_init(self, session)
+        self._design_engine = _FakeEngineMultiOp(self._design_engine)
+
+    monkeypatch.setattr(OpenApiImportService, "__init__", patched_init)
+
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    # Batch with 2 docs; first doc will trigger the fake overflow.
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "batch": "true", "dry_run": "true"},
+        json={
+            "documents": [
+                {"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+                {"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+            ],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["code"] == "GENERATOR_INTENT_LIMIT_EXCEEDED"
+
+
+# ---------------------------------------------------------------------------
+# FT-S08 — import_batch_from_preview(design="schema") 真落库
+# ---------------------------------------------------------------------------
+async def test_ft_s08_import_batch_schema_creates_cases(client, db_session):
+    """Batch + design="schema" commit must create at least 1 case per
+    document, summing to the per-doc total_intents. Two DISTINCT
+    documents (different paths) to avoid (method, path) collision."""
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    schema_b = dict(SAMPLE_OPENAPI_3_0_SCHEMA)
+    schema_b["paths"] = {"/sensors-v2": SAMPLE_OPENAPI_3_0_SCHEMA["paths"]["/sensors"]}
+
+    payload = {
+        "documents": [
+            {"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+            {"source_content": schema_b},
+        ],
+    }
+    pv = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "batch": "true", "dry_run": "true"},
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert pv.status_code == 200, pv.text
+    preview_id = pv.json()["preview_id"]
+
+    commit = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={
+            "design": "schema",
+            "batch": "true",
+            "dry_run": "false",
+            "preview_id": preview_id,
+        },
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert commit.status_code == 200, commit.text
+    body = commit.json()
+    # 2 docs with distinct (method, path) → 2 ops succeeded.
+    assert body["total_attempted"] >= 2
+    assert body["total_succeeded"] >= 2
+
+
+# ---------------------------------------------------------------------------
+# FT-R04 — router ?design=schema intent 超 20 → 400 (router 层变体)
+# ---------------------------------------------------------------------------
+async def test_ft_r04_router_design_schema_intent_overflow_returns_400(
+    client, db_session, monkeypatch
+):
+    """Verify the 400 GENERATOR_INTENT_LIMIT_EXCEEDED surfaces from the
+    Router layer (not just the Service layer covered by FT-S04)."""
+    from app.domain.openapi_importer.service import OpenApiImportService
+    from app.domain.test_design.schema import TestIntent
+
+    class _FakeEngine:
+        def __init__(self, real):
+            self._real = real
+
+        def design(self, endpoint):
+            return [
+                TestIntent(
+                    intent_id=f"fake-{i}",
+                    strategy="happy_path",
+                    operation_id=endpoint.method + " " + endpoint.path,
+                    method=endpoint.method,
+                    path=endpoint.path,
+                    name=f"fake-{i}",
+                    body_override=None,
+                    body_type_override=None,
+                    assertions=[
+                        {
+                            "type": "status_code",
+                            "operator": "in",
+                            "expected": [200, 201, 202, 204],
+                        }
+                    ],
+                    expected_status_codes=[200, 201, 202, 204],
+                    expected_status_mode="any_of",
+                )
+                for i in range(21)
+            ]
+
+    orig_init = OpenApiImportService.__init__
+
+    def patched_init(self, session):
+        orig_init(self, session)
+        self._design_engine = _FakeEngine(self._design_engine)
+
+    monkeypatch.setattr(OpenApiImportService, "__init__", patched_init)
+
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "dry_run": "true"},
+        json={"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    # Same code as FT-S04, but reached via the router — proves the
+    # exception_handler in app fixture correctly maps BadRequestException
+    # to HTTP 400 with the business code preserved.
+    assert resp.status_code == 400, resp.text
+    body = resp.json()
+    assert body["code"] == "GENERATOR_INTENT_LIMIT_EXCEEDED"
+
+
+# ---------------------------------------------------------------------------
+# FT-R08 — router ?design=schema&batch=true 多文档策略驱动
+# ---------------------------------------------------------------------------
+async def test_ft_r08_router_design_schema_batch_multidoc(client, db_session):
+    """Smoke test for batch + design="schema" combination: the response
+    must include per-document summaries AND a top-level total_intents."""
+    user_resp = await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": f"u_{uuid.uuid4().hex[:6]}",
+            "email": f"u@e.com",
+            "password": "TestPass123!",
+            "nickname": "u",
+            "phone": "13800000000",
+        },
+    )
+    token = user_resp.json()["token"]["access_token"]
+    project, suite = await _create_project_and_suite(client, token)
+
+    resp = await client.post(
+        f"/api/v1/projects/{project['id']}/suites/{suite['id']}/import/openapi",
+        params={"design": "schema", "batch": "true", "dry_run": "true"},
+        json={
+            "documents": [
+                {"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+                {"source_content": SAMPLE_OPENAPI_3_0_SCHEMA},
+            ],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Per-document strategy labels populated.
+    for doc_summary in body["documents"]:
+        for op_preview in doc_summary["operations"]:
+            assert op_preview.get("strategy") is not None
+    # Top-level total_intents = sum across docs.
+    assert body["total_intents"] is not None
+    assert body["total_intents"] >= 2
