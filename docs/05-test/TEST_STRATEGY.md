@@ -124,3 +124,27 @@ pytest src/tests
 cd frontend
 npm run build
 ```
+
+### 8.1 CI 工作流（2026-09-23 起）
+
+`.github/workflows/` 下两个 workflow 在 push / PR 到 `main` 时自动触发：
+
+| Workflow | 触发条件 | 内容 |
+|----------|----------|------|
+| `backend-tests.yml` | `src/**` / `pyproject.toml` / `uv.lock` / `alembic.ini` / `migrations/**` 变更 | `pytest src/tests --cov=src/app --cov-fail-under=78` |
+| `frontend-check.yml` | `frontend/**` / `package*.json` 变更 | `npm run check`（lint + typecheck + build） |
+
+**覆盖率门槛演进路径**：
+
+| 阶段 | 阈值 | 触发时间 |
+|------|------|---------|
+| 当前 baseline | 79% | 2026-09-23 实测（515 测试全绿） |
+| 起步门槛 | 78% | 2026-09-23 留 1% 余量 |
+| 目标线 1 | 80%（service 层最低要求，per §7） | 下个 Sprint |
+| 目标线 2 | 90%（test_engine / test_design 关键路径） | F025 落地后 |
+
+**红线**：
+
+* 不上传 codecov / coveralls 等第三方服务（呼应 AI_RULES §4.4 + §15：未经 ADR 批准不引入新框架）。
+* CI 失败必须修复或回滚；不允许 `-no-cov-on-fail` 等"绕过"提交。
+* coverage.xml 仅作为 debug artifact 保留 7 天；不在 README 显示 badge（避免外部依赖）。

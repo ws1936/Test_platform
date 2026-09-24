@@ -177,6 +177,16 @@
 - [ ] CI 执行 `npm run check` + 前端测试。
 - 影响：当前 TypeScript 可构建，但业务契约类错误无法由静态检查发现。
 
+### P0-1 CI / 覆盖率闸门（2026-09-23 完成）
+
+- [x] `.github/workflows/backend-tests.yml` 跑 `pytest --cov=src/app --cov-fail-under=78`（baseline 79%）。
+- [x] `.github/workflows/frontend-check.yml` 跑 `npm run check`（lint + typecheck + build）。
+- [x] `pyproject.toml` 加 `[tool.coverage.*]` 配置 + `fail_under=78`（启动留 1% 余量）。
+- [x] `docs/05-test/TEST_STRATEGY.md §8.1` 登记 CI 触发条件 + 覆盖率门槛演进路径。
+- [x] `README.md §6.2` 补 CI 工作流说明。
+- **演进**：80% / 90% 门槛在后续 Sprint（F025 落地时）再提升。
+- 影响：每次 push / PR 到 `main` 自动校验 515 测试 + coverage + 前端构建；不再依赖人工 `pytest src/tests`。
+
 ---
 
 ## 四、P2：一致性、性能与可维护性

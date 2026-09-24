@@ -156,16 +156,27 @@ npm run dev
 
 ## 6. 测试
 
+### 6.1 本地运行
+
 ```bash
+# 后端（无 coverage，本地快）
 pytest src/tests
+
+# 后端 + 覆盖率（CI 同款）
+pytest src/tests --cov=src/app --cov-report=term-missing
+
+# 前端 lint + typecheck + build
+cd frontend && npm run check
 ```
 
-涉及前端时：
+### 6.2 CI
 
-```bash
-cd frontend
-npm run build
-```
+每次 push / PR 到 `main` 触发：
+
+* `.github/workflows/backend-tests.yml` — pytest + coverage XML 报告（baseline 79% → 起步门槛 78%，后续 Sprint 提升至 80% / 90% per `docs/05-test/TEST_STRATEGY.md §7`）
+* `.github/workflows/frontend-check.yml` — `npm run check`（lint + typecheck + build）
+
+覆盖率 XML artifact 上传 7 天（仅作 debug，**不上传 codecov 等第三方服务**）。
 
 ---
 
